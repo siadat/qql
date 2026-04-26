@@ -35,6 +35,20 @@ web3  16   64
 db1   32   128
 ```
 
+## Limit
+
+Cap the number of rows with `LIMIT N` (non-negative integer). It runs after `ORDER BY`, so combining the two gives top-N queries:
+
+```
+$ qql --sql "SELECT key, cpu ORDER BY cpu DESC LIMIT 2" testdata/servers.yaml
+key   cpu
+----  ---
+db1   32
+web3  16
+```
+
+`LIMIT 0` is valid and returns zero rows. Place `LIMIT` after `ORDER BY` and before `WITH`.
+
 ## Pattern matching
 
 The `MATCHES` operator runs a Go regular expression against the left-hand value:

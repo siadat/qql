@@ -27,15 +27,16 @@ func main() {
 	var pred parser.WhereExpr
 	var sqlSource string
 	var orderBy []parser.OrderTerm
+	var limit = -1
 	var with parser.WithOptions
 	var whereRaw string
 	if *sqlFlag != "" {
-		s, src, p, ob, w, wr, err := parser.ParseSQL(*sqlFlag)
+		s, src, p, ob, lim, w, wr, err := parser.ParseSQL(*sqlFlag)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)
 		}
-		selected, sqlSource, pred, orderBy, with, whereRaw = s, src, p, ob, w, wr
+		selected, sqlSource, pred, orderBy, limit, with, whereRaw = s, src, p, ob, lim, w, wr
 	}
 
 	var paths []string
@@ -56,6 +57,7 @@ func main() {
 			Select:   selected,
 			Where:    whereRaw,
 			OrderBy:  toProviderOrderBy(orderBy),
+			Limit:    limit,
 		}
 		var err error
 		rows, err = providers.Load(ctx)
@@ -77,6 +79,7 @@ func main() {
 				Select:   selected,
 				Where:    whereRaw,
 				OrderBy:  toProviderOrderBy(orderBy),
+				Limit:    limit,
 			}
 			pathRows, err := providers.Load(ctx)
 			if err != nil {
@@ -110,6 +113,10 @@ func main() {
 			}
 			return false
 		})
+	}
+
+	if limit >= 0 && len(rows) > limit {
+		rows = rows[:limit]
 	}
 
 	switch outFlag {

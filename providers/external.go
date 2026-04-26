@@ -25,6 +25,9 @@ type externalRequest struct {
 	Select  []string    `json:"select,omitempty"`
 	Where   string      `json:"where,omitempty"`
 	OrderBy []OrderTerm `json:"order_by,omitempty"`
+	// Limit is a *int so absence ("no LIMIT clause") and 0 ("LIMIT 0") are
+	// distinguishable on the wire. omitempty drops nil, leaves 0 in.
+	Limit *int `json:"limit,omitempty"`
 }
 
 // loadExternal execs scriptPath, sends the request payload on stdin, and
@@ -35,6 +38,11 @@ type externalRequest struct {
 // lines are logged to stderr and skipped (so a noisy script doesn't take down
 // a whole query).
 func loadExternal(scriptPath string, ctx Context) ([]map[string]any, error) {
+	var limit *int
+	if ctx.Limit >= 0 {
+		l := ctx.Limit
+		limit = &l
+	}
 	payload, err := json.Marshal(externalRequest{
 		Version: 1,
 		Source:  ctx.Source,
@@ -43,6 +51,7 @@ func loadExternal(scriptPath string, ctx Context) ([]map[string]any, error) {
 		Select:  ctx.Select,
 		Where:   ctx.Where,
 		OrderBy: ctx.OrderBy,
+		Limit:   limit,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("encode external provider payload: %w", err)

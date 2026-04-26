@@ -36,6 +36,7 @@ const (
 	tokBy
 	tokAsc
 	tokDesc
+	tokLimit
 	tokWith
 	tokComma
 	tokStar
@@ -107,6 +108,8 @@ func tokenize(src string) ([]token, error) {
 				kind = tokAsc
 			case "desc":
 				kind = tokDesc
+			case "limit":
+				kind = tokLimit
 			case "with":
 				kind = tokWith
 			case "matches":
@@ -227,10 +230,14 @@ type WithOptions struct {
 // empty when there is no WHERE clause. External providers receive this as a
 // hint so they can choose to filter at the source; qql still re-applies the
 // parsed `pred` to whatever rows the provider returns.
-func ParseSQL(src string) (selected []string, source string, pred WhereExpr, orderBy []OrderTerm, with WithOptions, whereRaw string, err error) {
+//
+// limit is -1 when no LIMIT clause is present. LIMIT 0 is a valid query that
+// yields zero rows.
+func ParseSQL(src string) (selected []string, source string, pred WhereExpr, orderBy []OrderTerm, limit int, with WithOptions, whereRaw string, err error) {
+	limit = -1
 	toks, err := tokenize(src)
 	if err != nil {
-		return nil, "", nil, nil, WithOptions{}, "", err
+		return nil, "", nil, nil, -1, WithOptions{}, "", err
 	}
 	p := &parseState{toks: toks}
 
@@ -238,7 +245,7 @@ func ParseSQL(src string) (selected []string, source string, pred WhereExpr, ord
 		p.advance()
 		selected, err = parseSelectList(p)
 		if err != nil {
-			return nil, "", nil, nil, WithOptions{}, "", err
+			return nil, "", nil, nil, -1, WithOptions{}, "", err
 		}
 	}
 
@@ -246,7 +253,7 @@ func ParseSQL(src string) (selected []string, source string, pred WhereExpr, ord
 		p.advance()
 		t := p.peek()
 		if t.kind != tokSource {
-			return nil, "", nil, nil, WithOptions{}, "", fmt.Errorf("expected source after FROM at offset %d, got %q", t.pos, t.text)
+			return nil, "", nil, nil, -1, WithOptions{}, "", fmt.Errorf("expected source after FROM at offset %d, got %q", t.pos, t.text)
 		}
 		p.advance()
 		source = t.text
@@ -257,7 +264,7 @@ func ParseSQL(src string) (selected []string, source string, pred WhereExpr, ord
 		whereStart := p.peek().pos
 		pred, err = p.parseOr()
 		if err != nil {
-			return nil, "", nil, nil, WithOptions{}, "", err
+			return nil, "", nil, nil, -1, WithOptions{}, "", err
 		}
 		whereRaw = strings.TrimRight(src[whereStart:p.peek().pos], " \t\n\r")
 	}
@@ -266,26 +273,39 @@ func ParseSQL(src string) (selected []string, source string, pred WhereExpr, ord
 		p.advance()
 		t := p.advance()
 		if t.kind != tokBy {
-			return nil, "", nil, nil, WithOptions{}, "", fmt.Errorf("expected BY after ORDER at offset %d, got %q", t.pos, t.text)
+			return nil, "", nil, nil, -1, WithOptions{}, "", fmt.Errorf("expected BY after ORDER at offset %d, got %q", t.pos, t.text)
 		}
 		orderBy, err = parseOrderBy(p)
 		if err != nil {
-			return nil, "", nil, nil, WithOptions{}, "", err
+			return nil, "", nil, nil, -1, WithOptions{}, "", err
 		}
+	}
+
+	if p.peek().kind == tokLimit {
+		p.advance()
+		t := p.advance()
+		if t.kind != tokNumber {
+			return nil, "", nil, nil, -1, WithOptions{}, "", fmt.Errorf("expected number after LIMIT at offset %d, got %q", t.pos, t.text)
+		}
+		n, perr := strconv.ParseInt(t.text, 10, 64)
+		if perr != nil || n < 0 {
+			return nil, "", nil, nil, -1, WithOptions{}, "", fmt.Errorf("LIMIT must be a non-negative integer, got %q at offset %d", t.text, t.pos)
+		}
+		limit = int(n)
 	}
 
 	if p.peek().kind == tokWith {
 		p.advance()
 		with, err = parseWith(p)
 		if err != nil {
-			return nil, "", nil, nil, WithOptions{}, "", err
+			return nil, "", nil, nil, -1, WithOptions{}, "", err
 		}
 	}
 
 	if t := p.peek(); t.kind != tokEOF {
-		return nil, "", nil, nil, WithOptions{}, "", fmt.Errorf("unexpected token %q at offset %d", t.text, t.pos)
+		return nil, "", nil, nil, -1, WithOptions{}, "", fmt.Errorf("unexpected token %q at offset %d", t.text, t.pos)
 	}
-	return selected, source, pred, orderBy, with, whereRaw, nil
+	return selected, source, pred, orderBy, limit, with, whereRaw, nil
 }
 
 // parseWith reads a comma-separated list of `key = string` pairs after the
