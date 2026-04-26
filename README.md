@@ -55,15 +55,11 @@ Keywords are case-insensitive. String literals use single or double quotes (no e
 
 ### FROM
 
-A path to a YAML/JSON file, or `git:<repo>` for git log rows. When absent, positional CLI arguments supply the sources; when present, the FROM source becomes the first positional path and CLI arguments are appended.
+A path to a YAML or JSON file. When absent, positional CLI arguments supply the sources; when present, the FROM source becomes the first positional path and CLI arguments are appended.
 
 ### WHERE
 
 A boolean expression over column references and literals. Comparison operators are `=`, `!=`, `<`, `<=`, `>`, `>=`. The pattern operator `MATCHES '<regex>'` runs a Go regular expression against the value. Logical connectives are `AND`, `OR`, `NOT`, with parentheses for grouping. Type mismatches between operands evaluate to false; only `= null` / `!= null` are useful — relational comparisons against `null` yield false.
-
-### MATCHES
-
-`<value> MATCHES '<regex>'` is a `WHERE` operator that tests the left-hand value against a Go regular expression. Patterns are not anchored — use `^` and `$` for full matches. Combine with `NOT` to invert (e.g. `WHERE NOT key MATCHES '^web'`). Non-string values are coerced to their textual form, so a numeric column accepts patterns like `MATCHES '^4\d+$'`. Invalid regexes fail at parse time with the offset of the bad pattern.
 
 ### ORDER BY
 
@@ -78,6 +74,7 @@ One or more `<column> [ASC|DESC]` terms separated by commas; `ASC` is the defaul
 Trailing configuration as a comma-separated list of `<key> = '<value>'` pairs. Recognized keys:
 
 - `prefix = '<glob>'` — extract rows from a nested dot-path. A `*` segment matches any map key and captures it; literal segments descend without capturing; non-matching branches are silently skipped. The rightmost `*` becomes the `key` column and carries the full path from the root (e.g. `*.servers` yields `key = "region-a.servers"`); earlier `*`s become `key_capture_1`, `key_capture_2`, … and carry just the matched key, useful for `WHERE` filtering.
+- `provider = 'git:<repo>'` — read commit rows from the given repository (use `git:.` for the current directory). Columns: `commit`, `author`, `email`, `time`, `subject`. `FROM` and positional paths are ignored.
 - `provider = 'external:<script>'` — replace built-in dispatch with a user-supplied script (see "External providers").
 
 ## External providers

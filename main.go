@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"strings"
 
 	"github.com/siadat/qql/parser"
 	"github.com/siadat/qql/providers"
@@ -48,9 +47,11 @@ func main() {
 	paths = append(paths, flag.Args()...)
 
 	var rows []row
-	if strings.HasPrefix(with.Provider, "external:") {
-		// External providers run once per query and receive every path via
-		// ctx.Files; the script decides how to interleave them.
+	if with.Provider != "" {
+		// Provider-driven loads run once per query, not once per path. External
+		// providers receive every path via ctx.Files and decide how to
+		// interleave them; the git provider reads its repo path out of the
+		// provider value itself and ignores Source/Files entirely.
 		ctx := providers.Context{
 			Source:   sqlSource,
 			Files:    paths,
