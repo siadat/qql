@@ -7,6 +7,9 @@ import (
 )
 
 func Load(path string) (any, error) {
+	if rest, ok := strings.CutPrefix(path, "git:"); ok {
+		return loadGit(rest)
+	}
 	switch ext := strings.ToLower(filepath.Ext(path)); ext {
 	case ".json":
 		return loadJSON(path)

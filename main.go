@@ -19,21 +19,26 @@ func main() {
 	}
 	flag.Parse()
 
-	paths := flag.Args()
-	if len(paths) == 0 {
-		flag.Usage()
-		os.Exit(2)
-	}
-
 	var selected []string
 	var pred whereExpr
+	var sqlSource string
 	if *sqlFlag != "" {
-		s, p, err := parseSQL(*sqlFlag)
+		s, src, p, err := parseSQL(*sqlFlag)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)
 		}
-		selected, pred = s, p
+		selected, sqlSource, pred = s, src, p
+	}
+
+	var paths []string
+	if sqlSource != "" {
+		paths = append(paths, sqlSource)
+	}
+	paths = append(paths, flag.Args()...)
+	if len(paths) == 0 {
+		flag.Usage()
+		os.Exit(2)
 	}
 
 	var rows []row

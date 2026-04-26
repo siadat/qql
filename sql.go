@@ -28,9 +28,11 @@ const (
 	tokLParen
 	tokRParen
 	tokSelect
+	tokFrom
 	tokWhere
 	tokComma
 	tokStar
+	tokSource
 )
 
 type token struct {
@@ -46,6 +48,14 @@ func tokenize(src string) ([]token, error) {
 		c := src[i]
 		if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
 			i++
+			continue
+		}
+		if len(toks) > 0 && toks[len(toks)-1].kind == tokFrom {
+			start := i
+			for i < len(src) && src[i] != ' ' && src[i] != '\t' && src[i] != '\n' && src[i] != '\r' {
+				i++
+			}
+			toks = append(toks, token{tokSource, src[start:i], start})
 			continue
 		}
 		start := i
@@ -78,6 +88,8 @@ func tokenize(src string) ([]token, error) {
 				kind = tokNull
 			case "select":
 				kind = tokSelect
+			case "from":
+				kind = tokFrom
 			case "where":
 				kind = tokWhere
 			}
@@ -177,10 +189,10 @@ func (p *parser) advance() token {
 	return t
 }
 
-func parseSQL(src string) (selected []string, pred whereExpr, err error) {
+func parseSQL(src string) (selected []string, source string, pred whereExpr, err error) {
 	toks, err := tokenize(src)
 	if err != nil {
-		return nil, nil, err
+		return nil, "", nil, err
 	}
 	p := &parser{toks: toks}
 
@@ -188,22 +200,32 @@ func parseSQL(src string) (selected []string, pred whereExpr, err error) {
 		p.advance()
 		selected, err = parseSelectList(p)
 		if err != nil {
-			return nil, nil, err
+			return nil, "", nil, err
 		}
+	}
+
+	if p.peek().kind == tokFrom {
+		p.advance()
+		t := p.peek()
+		if t.kind != tokSource {
+			return nil, "", nil, fmt.Errorf("expected source after FROM at offset %d, got %q", t.pos, t.text)
+		}
+		p.advance()
+		source = t.text
 	}
 
 	if p.peek().kind == tokWhere {
 		p.advance()
 		pred, err = p.parseOr()
 		if err != nil {
-			return nil, nil, err
+			return nil, "", nil, err
 		}
 	}
 
 	if t := p.peek(); t.kind != tokEOF {
-		return nil, nil, fmt.Errorf("unexpected token %q at offset %d", t.text, t.pos)
+		return nil, "", nil, fmt.Errorf("unexpected token %q at offset %d", t.text, t.pos)
 	}
-	return selected, pred, nil
+	return selected, source, pred, nil
 }
 
 func parseSelectList(p *parser) ([]string, error) {
