@@ -69,18 +69,23 @@ func joinPath(prefix, key string) string {
 	return prefix + "." + key
 }
 
-func printTable(w io.Writer, rows []row) {
-	colSet := map[string]struct{}{}
-	for _, r := range rows {
-		for k := range r.cols {
-			colSet[k] = struct{}{}
+func printTable(w io.Writer, rows []row, selected []string) {
+	var cols []string
+	if selected != nil {
+		cols = selected
+	} else {
+		colSet := map[string]struct{}{}
+		for _, r := range rows {
+			for k := range r.cols {
+				colSet[k] = struct{}{}
+			}
 		}
+		cols = make([]string, 0, len(colSet))
+		for c := range colSet {
+			cols = append(cols, c)
+		}
+		sort.Strings(cols)
 	}
-	cols := make([]string, 0, len(colSet))
-	for c := range colSet {
-		cols = append(cols, c)
-	}
-	sort.Strings(cols)
 
 	cellAt := func(r row, c string) string {
 		v, ok := r.cols[c]
