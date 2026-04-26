@@ -1,4 +1,5 @@
 VERSION = v0.0.0-dev
+ORIGIN = origin
 
 .PHONY: test check-version release-github
 
@@ -21,5 +22,8 @@ check-version:
 # To release: bump VERSION above, commit the change, then run `make release-github`.
 release-github: check-version test
 	git tag -a $(VERSION) -m "Release $(VERSION)"
-	git push origin $(VERSION)
-	@echo "tag $(VERSION) pushed; watch https://github.com/siadat/qql/actions"
+	git push $(ORIGIN) $(VERSION)
+
+push-git-commits:
+	git push $(ORIGIN) HEAD
+	git push codeberg HEAD
