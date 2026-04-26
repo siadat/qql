@@ -236,10 +236,14 @@ type WithOptions struct {
 //
 // limit is -1 when no LIMIT clause is present. LIMIT 0 is a valid query that
 // yields zero rows. offset defaults to 0 (no rows skipped).
-func ParseSQL(src string) (selected []string, source string, pred WhereExpr, orderBy []OrderTerm, limit, offset int, with WithOptions, whereRaw string, err error) {
+//
+// isCount is true for `SELECT COUNT(*)`. When set, the caller should collapse
+// the post-WHERE rows into a single row with a `count` column; selected is nil
+// in that case.
+func ParseSQL(src string) (selected []string, source string, pred WhereExpr, orderBy []OrderTerm, limit, offset int, with WithOptions, whereRaw string, isCount bool, err error) {
 	limit = -1
-	fail := func(e error) (selected []string, source string, pred WhereExpr, orderBy []OrderTerm, limit, offset int, with WithOptions, whereRaw string, err error) {
-		return nil, "", nil, nil, -1, 0, WithOptions{}, "", e
+	fail := func(e error) (selected []string, source string, pred WhereExpr, orderBy []OrderTerm, limit, offset int, with WithOptions, whereRaw string, isCount bool, err error) {
+		return nil, "", nil, nil, -1, 0, WithOptions{}, "", false, e
 	}
 	toks, err := tokenize(src)
 	if err != nil {
@@ -249,7 +253,7 @@ func ParseSQL(src string) (selected []string, source string, pred WhereExpr, ord
 
 	if p.peek().kind == tokSelect {
 		p.advance()
-		selected, err = parseSelectList(p)
+		selected, isCount, err = parseSelectList(p)
 		if err != nil {
 			return fail(err)
 		}
@@ -316,7 +320,7 @@ func ParseSQL(src string) (selected []string, source string, pred WhereExpr, ord
 	if t := p.peek(); t.kind != tokEOF {
 		return fail(fmt.Errorf("unexpected token %q at offset %d", t.text, t.pos))
 	}
-	return selected, source, pred, orderBy, limit, offset, with, whereRaw, nil
+	return selected, source, pred, orderBy, limit, offset, with, whereRaw, isCount, nil
 }
 
 // parseNonNegativeInt consumes the next token, expecting a non-negative
@@ -398,16 +402,31 @@ func parseOrderBy(p *parseState) ([]OrderTerm, error) {
 	return terms, nil
 }
 
-func parseSelectList(p *parseState) ([]string, error) {
+func parseSelectList(p *parseState) ([]string, bool, error) {
 	if p.peek().kind == tokStar {
 		p.advance()
-		return nil, nil
+		return nil, false, nil
+	}
+	// COUNT is recognized lexically only when followed by `(` so that "count"
+	// remains usable as a regular column name.
+	if t := p.peek(); t.kind == tokIdent && strings.EqualFold(t.text, "count") && p.toks[p.pos+1].kind == tokLParen {
+		p.advance() // count
+		p.advance() // (
+		star := p.advance()
+		if star.kind != tokStar {
+			return nil, false, fmt.Errorf("expected * inside COUNT() at offset %d, got %q (only COUNT(*) is supported)", star.pos, star.text)
+		}
+		rp := p.advance()
+		if rp.kind != tokRParen {
+			return nil, false, fmt.Errorf("expected ')' to close COUNT(*) at offset %d, got %q", rp.pos, rp.text)
+		}
+		return nil, true, nil
 	}
 	var cols []string
 	for {
 		t := p.advance()
 		if t.kind != tokIdent {
-			return nil, fmt.Errorf("expected column name at offset %d, got %q", t.pos, t.text)
+			return nil, false, fmt.Errorf("expected column name at offset %d, got %q", t.pos, t.text)
 		}
 		cols = append(cols, t.text)
 		if p.peek().kind != tokComma {
@@ -415,7 +434,7 @@ func parseSelectList(p *parseState) ([]string, error) {
 		}
 		p.advance()
 	}
-	return cols, nil
+	return cols, false, nil
 }
 
 func ParseWhere(src string) (WhereExpr, error) {

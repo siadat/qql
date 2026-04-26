@@ -31,13 +31,14 @@ func main() {
 	var offset int
 	var with parser.WithOptions
 	var whereRaw string
+	var isCount bool
 	if *sqlFlag != "" {
-		s, src, p, ob, lim, off, w, wr, err := parser.ParseSQL(*sqlFlag)
+		s, src, p, ob, lim, off, w, wr, ic, err := parser.ParseSQL(*sqlFlag)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)
 		}
-		selected, sqlSource, pred, orderBy, limit, offset, with, whereRaw = s, src, p, ob, lim, off, w, wr
+		selected, sqlSource, pred, orderBy, limit, offset, with, whereRaw, isCount = s, src, p, ob, lim, off, w, wr, ic
 	}
 
 	var paths []string
@@ -101,6 +102,11 @@ func main() {
 			}
 		}
 		rows = filtered
+	}
+
+	if isCount {
+		rows = []row{{"count": len(rows)}}
+		selected = []string{"count"}
 	}
 
 	if len(orderBy) > 0 {

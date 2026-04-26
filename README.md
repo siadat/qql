@@ -35,6 +35,19 @@ web3  16   64
 db1   32   128
 ```
 
+## Counting rows
+
+`SELECT COUNT(*)` collapses the (post-WHERE) result to a single row with one `count` column:
+
+```
+$ qql --sql "SELECT COUNT(*) WHERE status = 'up'" testdata/servers.yaml
+count
+-----
+4
+```
+
+Only `COUNT(*)` is supported — no `COUNT(col)`, no `COUNT(DISTINCT ...)`, no mixing with other selected columns. It composes with `WHERE`, `WITH prefix = ...`, and external providers.
+
 ## Limit and offset
 
 Cap the number of rows with `LIMIT N` and skip the first `M` rows with `OFFSET M` (both non-negative integers). They run after `ORDER BY`, so combining all three gives paginated top-N queries:
