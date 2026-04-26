@@ -2,23 +2,61 @@ package main
 
 import (
 	"reflect"
+	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
+
+func dedent(s string) string {
+	lines := strings.Split(s, "\n")
+	for len(lines) > 0 && strings.TrimSpace(lines[0]) == "" {
+		lines = lines[1:]
+	}
+	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+		lines = lines[:len(lines)-1]
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	i := 0
+	for i < len(lines[0]) && (lines[0][i] == ' ' || lines[0][i] == '\t') {
+		i++
+	}
+	prefix := lines[0][:i]
+	for j, line := range lines {
+		if strings.HasPrefix(line, prefix) {
+			lines[j] = line[len(prefix):]
+		}
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+func mustParseYAML(t *testing.T, s string) any {
+	t.Helper()
+	var v any
+	if err := yaml.Unmarshal([]byte(dedent(s)), &v); err != nil {
+		t.Fatalf("parse yaml: %v", err)
+	}
+	return v
+}
 
 func TestBuildRows(t *testing.T) {
 	tests := []struct {
 		name  string
 		path  string
-		value any
+		input string
 		want  []row
 	}{
 		{
 			name: "flat map",
 			path: "f.json",
-			value: map[string]any{
-				"alice": map[string]any{"age": 30},
-				"bob":   map[string]any{"age": 25},
-			},
+			input: `
+				alice:
+				  age: 30
+				bob:
+				  age: 25
+			`,
 			want: []row{
 				{id: "alice", cols: map[string]any{"age": 30}},
 				{id: "bob", cols: map[string]any{"age": 25}},
@@ -27,11 +65,12 @@ func TestBuildRows(t *testing.T) {
 		{
 			name: "nested map flattened to dot paths",
 			path: "f.json",
-			value: map[string]any{
-				"alice": map[string]any{
-					"address": map[string]any{"city": "SF", "zip": "94103"},
-				},
-			},
+			input: `
+				alice:
+				  address:
+				    city: SF
+				    zip: "94103"
+			`,
 			want: []row{
 				{id: "alice", cols: map[string]any{
 					"address.city": "SF",
@@ -42,9 +81,10 @@ func TestBuildRows(t *testing.T) {
 		{
 			name: "array elements use index path components",
 			path: "f.json",
-			value: map[string]any{
-				"alice": map[string]any{"tags": []any{"eng", "lead"}},
-			},
+			input: `
+				alice:
+				  tags: [eng, lead]
+			`,
 			want: []row{
 				{id: "alice", cols: map[string]any{
 					"tags.0": "eng",
@@ -53,9 +93,13 @@ func TestBuildRows(t *testing.T) {
 			},
 		},
 		{
-			name:  "non-map root falls back to file path as id",
-			path:  "f.json",
-			value: []any{1, 2, 3},
+			name: "non-map root falls back to file path as id",
+			path: "f.json",
+			input: `
+				- 1
+				- 2
+				- 3
+			`,
 			want: []row{
 				{id: "f.json", cols: map[string]any{
 					"0": 1,
@@ -67,10 +111,10 @@ func TestBuildRows(t *testing.T) {
 		{
 			name: "empty map and array produce no columns",
 			path: "f.json",
-			value: map[string]any{
-				"a": map[string]any{},
-				"b": []any{},
-			},
+			input: `
+				a: {}
+				b: []
+			`,
 			want: []row{
 				{id: "a", cols: map[string]any{}},
 				{id: "b", cols: map[string]any{}},
@@ -79,9 +123,9 @@ func TestBuildRows(t *testing.T) {
 		{
 			name: "scalar value under root key uses empty path",
 			path: "f.json",
-			value: map[string]any{
-				"alice": "yes",
-			},
+			input: `
+				alice: "yes"
+			`,
 			want: []row{
 				{id: "alice", cols: map[string]any{"": "yes"}},
 			},
@@ -89,11 +133,14 @@ func TestBuildRows(t *testing.T) {
 		{
 			name: "rows sorted by root key",
 			path: "f.json",
-			value: map[string]any{
-				"c": map[string]any{"x": 1},
-				"a": map[string]any{"x": 1},
-				"b": map[string]any{"x": 1},
-			},
+			input: `
+				c:
+				  x: 1
+				a:
+				  x: 1
+				b:
+				  x: 1
+			`,
 			want: []row{
 				{id: "a", cols: map[string]any{"x": 1}},
 				{id: "b", cols: map[string]any{"x": 1}},
@@ -103,9 +150,10 @@ func TestBuildRows(t *testing.T) {
 		{
 			name: "null leaf preserved in cols",
 			path: "f.json",
-			value: map[string]any{
-				"alice": map[string]any{"middle_name": nil},
-			},
+			input: `
+				alice:
+				  middle_name: null
+			`,
 			want: []row{
 				{id: "alice", cols: map[string]any{"middle_name": nil}},
 			},
@@ -114,9 +162,10 @@ func TestBuildRows(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := buildRows(tt.path, tt.value)
+			value := mustParseYAML(t, tt.input)
+			got := buildRows(tt.path, value)
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("buildRows(%q, %#v) =\n got:  %#v\n want: %#v", tt.path, tt.value, got, tt.want)
+				t.Errorf("buildRows(%q, %#v) =\n got:  %#v\n want: %#v", tt.path, value, got, tt.want)
 			}
 		})
 	}
