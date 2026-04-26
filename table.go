@@ -27,7 +27,7 @@ func resolveCols(rows []row, selected []string) []string {
 	return auto
 }
 
-func printTable(w io.Writer, rows []row, selected []string) {
+func printTable(w io.Writer, rows []row, selected []string, header bool) {
 	cols := resolveCols(rows, selected)
 
 	cellAt := func(r row, c string) string {
@@ -39,8 +39,10 @@ func printTable(w io.Writer, rows []row, selected []string) {
 	}
 
 	widths := make([]int, len(cols))
-	for i, c := range cols {
-		widths[i] = len(c)
+	if header {
+		for i, c := range cols {
+			widths[i] = len(c)
+		}
 	}
 	for _, r := range rows {
 		for i, c := range cols {
@@ -66,13 +68,14 @@ func printTable(w io.Writer, rows []row, selected []string) {
 		fmt.Fprintln(w)
 	}
 
-	writeRow(cols)
-
-	sep := make([]string, len(cols))
-	for i, width := range widths {
-		sep[i] = strings.Repeat("-", width)
+	if header {
+		writeRow(cols)
+		sep := make([]string, len(cols))
+		for i, width := range widths {
+			sep[i] = strings.Repeat("-", width)
+		}
+		writeRow(sep)
 	}
-	writeRow(sep)
 
 	for _, r := range rows {
 		vals := make([]string, len(cols))

@@ -13,6 +13,7 @@ func main() {
 	var outFlag string
 	flag.StringVar(&outFlag, "out", "table", "output format: table, json, jsonl")
 	flag.StringVar(&outFlag, "o", "table", "output format (shorthand for --out)")
+	noHeader := flag.Bool("no-header", false, "hide the header row and separator in table output")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "usage: %s [--sql QUERY] [-o FORMAT] <file> [file ...]\n", os.Args[0])
 		flag.PrintDefaults()
@@ -63,7 +64,7 @@ func main() {
 
 	switch outFlag {
 	case "table":
-		printTable(os.Stdout, rows, selected)
+		printTable(os.Stdout, rows, selected, !*noHeader)
 	case "json":
 		printJSON(os.Stdout, rows, selected)
 	case "jsonl":
