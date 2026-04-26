@@ -9,6 +9,8 @@ import (
 
 type row = map[string]any
 
+// resolveCols picks the columns for output: selected verbatim if given,
+// otherwise the sorted union of keys present across all rows.
 func resolveCols(rows []row, selected []string) []string {
 	if selected != nil {
 		return selected
