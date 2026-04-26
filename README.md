@@ -35,19 +35,19 @@ web3  16   64
 db1   32   128
 ```
 
-## Limit
+## Limit and offset
 
-Cap the number of rows with `LIMIT N` (non-negative integer). It runs after `ORDER BY`, so combining the two gives top-N queries:
+Cap the number of rows with `LIMIT N` and skip the first `M` rows with `OFFSET M` (both non-negative integers). They run after `ORDER BY`, so combining all three gives paginated top-N queries:
 
 ```
-$ qql --sql "SELECT key, cpu ORDER BY cpu DESC LIMIT 2" testdata/servers.yaml
+$ qql --sql "SELECT key, cpu ORDER BY cpu DESC LIMIT 2 OFFSET 1" testdata/servers.yaml
 key   cpu
 ----  ---
-db1   32
 web3  16
+web1  8
 ```
 
-`LIMIT 0` is valid and returns zero rows. Place `LIMIT` after `ORDER BY` and before `WITH`.
+`LIMIT 0` returns zero rows. `OFFSET` works without `LIMIT` (skip M, return the rest). Clause order: `ORDER BY ... LIMIT ... OFFSET ... WITH ...`.
 
 ## Pattern matching
 

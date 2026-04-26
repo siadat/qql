@@ -26,8 +26,11 @@ type externalRequest struct {
 	Where   string      `json:"where,omitempty"`
 	OrderBy []OrderTerm `json:"order_by,omitempty"`
 	// Limit is a *int so absence ("no LIMIT clause") and 0 ("LIMIT 0") are
-	// distinguishable on the wire. omitempty drops nil, leaves 0 in.
-	Limit *int `json:"limit,omitempty"`
+	// distinguishable on the wire. omitempty drops nil, leaves 0 in. Offset
+	// is a plain int because OFFSET 0 is semantically a no-op, so omitempty's
+	// zero-equals-absent collapse is the right behavior.
+	Limit  *int `json:"limit,omitempty"`
+	Offset int  `json:"offset,omitempty"`
 }
 
 // loadExternal execs scriptPath, sends the request payload on stdin, and
@@ -52,6 +55,7 @@ func loadExternal(scriptPath string, ctx Context) ([]map[string]any, error) {
 		Where:   ctx.Where,
 		OrderBy: ctx.OrderBy,
 		Limit:   limit,
+		Offset:  ctx.Offset,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("encode external provider payload: %w", err)
