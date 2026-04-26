@@ -4,14 +4,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 )
 
 func main() {
-	selectFlag := flag.String("select", "", "comma-separated list of columns to include")
-	whereFlag := flag.String("where", "", "filter expression, e.g. \"age >= 30 AND active = true\"")
+	sqlFlag := flag.String("sql", "", `SQL-like query, e.g. "SELECT col1, col2 WHERE col3 > 5"`)
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "usage: %s [--select col1,col2,...] [--where EXPR] <file> [file ...]\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "usage: %s [--sql QUERY] <file> [file ...]\n", os.Args[0])
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -23,22 +21,14 @@ func main() {
 	}
 
 	var selected []string
-	if *selectFlag != "" {
-		for _, c := range strings.Split(*selectFlag, ",") {
-			if c = strings.TrimSpace(c); c != "" {
-				selected = append(selected, c)
-			}
-		}
-	}
-
 	var pred whereExpr
-	if *whereFlag != "" {
-		p, err := parseWhere(*whereFlag)
+	if *sqlFlag != "" {
+		s, p, err := parseSQL(*sqlFlag)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)
 		}
-		pred = p
+		selected, pred = s, p
 	}
 
 	var rows []row

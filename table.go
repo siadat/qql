@@ -77,17 +77,23 @@ func printTable(w io.Writer, rows []row, selected []string) {
 		colSet := map[string]struct{}{}
 		for _, r := range rows {
 			for k := range r.cols {
-				colSet[k] = struct{}{}
+				if k != "id" {
+					colSet[k] = struct{}{}
+				}
 			}
 		}
-		cols = make([]string, 0, len(colSet))
+		auto := make([]string, 0, len(colSet))
 		for c := range colSet {
-			cols = append(cols, c)
+			auto = append(auto, c)
 		}
-		sort.Strings(cols)
+		sort.Strings(auto)
+		cols = append([]string{"id"}, auto...)
 	}
 
 	cellAt := func(r row, c string) string {
+		if c == "id" {
+			return r.id
+		}
 		v, ok := r.cols[c]
 		if !ok || v == nil {
 			return "null"
@@ -95,18 +101,14 @@ func printTable(w io.Writer, rows []row, selected []string) {
 		return fmt.Sprintf("%v", v)
 	}
 
-	widths := make([]int, len(cols)+1)
-	widths[0] = len("id")
+	widths := make([]int, len(cols))
 	for i, c := range cols {
-		widths[i+1] = len(c)
+		widths[i] = len(c)
 	}
 	for _, r := range rows {
-		if len(r.id) > widths[0] {
-			widths[0] = len(r.id)
-		}
 		for i, c := range cols {
-			if s := cellAt(r, c); len(s) > widths[i+1] {
-				widths[i+1] = len(s)
+			if s := cellAt(r, c); len(s) > widths[i] {
+				widths[i] = len(s)
 			}
 		}
 	}
@@ -127,20 +129,18 @@ func printTable(w io.Writer, rows []row, selected []string) {
 		fmt.Fprintln(w)
 	}
 
-	header := append([]string{"id"}, cols...)
-	writeRow(header)
+	writeRow(cols)
 
-	sep := make([]string, len(widths))
+	sep := make([]string, len(cols))
 	for i, width := range widths {
 		sep[i] = strings.Repeat("-", width)
 	}
 	writeRow(sep)
 
 	for _, r := range rows {
-		vals := make([]string, len(cols)+1)
-		vals[0] = r.id
+		vals := make([]string, len(cols))
 		for i, c := range cols {
-			vals[i+1] = cellAt(r, c)
+			vals[i] = cellAt(r, c)
 		}
 		writeRow(vals)
 	}

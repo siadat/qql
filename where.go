@@ -195,6 +195,10 @@ const (
 	tokGte
 	tokLParen
 	tokRParen
+	tokSelect
+	tokWhere
+	tokComma
+	tokStar
 )
 
 type token struct {
@@ -240,6 +244,10 @@ func tokenize(src string) ([]token, error) {
 				kind = tokFalse
 			case "null":
 				kind = tokNull
+			case "select":
+				kind = tokSelect
+			case "where":
+				kind = tokWhere
 			}
 			toks = append(toks, token{kind, text, start})
 		case isDigit(c):
@@ -272,6 +280,12 @@ func tokenize(src string) ([]token, error) {
 		case c == ')':
 			i++
 			toks = append(toks, token{tokRParen, ")", start})
+		case c == ',':
+			i++
+			toks = append(toks, token{tokComma, ",", start})
+		case c == '*':
+			i++
+			toks = append(toks, token{tokStar, "*", start})
 		case c == '=':
 			i++
 			toks = append(toks, token{tokEq, "=", start})
