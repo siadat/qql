@@ -2,15 +2,13 @@
 
 [![test](https://github.com/siadat/qql/actions/workflows/test.yml/badge.svg)](https://github.com/siadat/qql/actions/workflows/test.yml)
 
-qql is a lightweight, extendable command-line data processor for YAML, JSON, git history, and user-supplied scripts. It exposes a SQL-like surface for selecting, filtering, sorting, and counting rows.
+qql is a lightweight and extendable command-line data processor akin to `jq` for working with YAML and other data sources.
 
 ## Install
 
-Run `go install github.com/siadat/qql@latest`.
-
-## Invocation
-
-`qql [--sql QUERY] [-o FORMAT] [--no-header] <file> [file ...]`. Output formats are `table` (default), `json`, and `jsonl`. Sources are dispatched by extension — `.json` and `.yaml`/`.yml` use built-in providers — or by source-prefix `git:<repo>` for git log rows.
+```
+go install github.com/siadat/qql@latest
+```
 
 ## Example
 
