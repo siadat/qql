@@ -7,7 +7,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func loadYAML(path string) (any, error) {
+func loadYAML(path string) ([]map[string]any, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -19,5 +19,5 @@ func loadYAML(path string) (any, error) {
 	if err := dec.Decode(&v); err != nil {
 		return nil, fmt.Errorf("decode %s: %w", path, err)
 	}
-	return v, nil
+	return buildRows(v), nil
 }

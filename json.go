@@ -11,11 +11,7 @@ func rowsToJSON(rows []row, selected []string) []map[string]any {
 	for _, r := range rows {
 		obj := make(map[string]any, len(cols))
 		for _, c := range cols {
-			if c == "id" {
-				obj["id"] = r.id
-			} else {
-				obj[c] = r.cols[c]
-			}
+			obj[c] = r[c]
 		}
 		out = append(out, obj)
 	}

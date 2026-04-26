@@ -8,9 +8,9 @@ import (
 
 func TestEval(t *testing.T) {
 	rows := []row{
-		{id: "alice", cols: map[string]any{"age": 30, "address.city": "SF", "tags.0": "eng", "active": true, "score": 95.5}},
-		{id: "bob", cols: map[string]any{"age": 25, "address.city": "NYC", "active": false}},
-		{id: "carol", cols: map[string]any{"age": 41, "address.city": "LA", "active": true, "middle_name": nil}},
+		{"id": "alice", "age": 30, "address.city": "SF", "tags.0": "eng", "active": true, "score": 95.5},
+		{"id": "bob", "age": 25, "address.city": "NYC", "active": false},
+		{"id": "carol", "age": 41, "address.city": "LA", "active": true, "middle_name": nil},
 	}
 
 	cases := []struct {
@@ -77,7 +77,7 @@ func TestEval(t *testing.T) {
 			var got []string
 			for _, r := range rows {
 				if expr.Eval(r) {
-					got = append(got, r.id)
+					got = append(got, r["id"].(string))
 				}
 			}
 			if !reflect.DeepEqual(got, c.want) {
@@ -88,7 +88,7 @@ func TestEval(t *testing.T) {
 }
 
 func TestEvalJSONNumber(t *testing.T) {
-	r := row{id: "x", cols: map[string]any{"v": json.Number("42")}}
+	r := row{"v": json.Number("42")}
 
 	cases := []struct {
 		expr string

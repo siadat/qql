@@ -43,12 +43,12 @@ func main() {
 
 	var rows []row
 	for _, path := range paths {
-		v, err := readers.Load(path)
+		pathRows, err := readers.Load(path)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-		rows = append(rows, buildRows(path, v)...)
+		rows = append(rows, pathRows...)
 	}
 
 	if pred != nil {

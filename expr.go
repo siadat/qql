@@ -38,10 +38,7 @@ type operand interface {
 type identOperand struct{ name string }
 
 func (o *identOperand) resolve(r row) any {
-	if o.name == "id" {
-		return r.id
-	}
-	return r.cols[o.name]
+	return r[o.name]
 }
 
 type numLit struct{ v float64 }

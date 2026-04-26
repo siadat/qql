@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-func loadGit(repoPath string) (any, error) {
+func loadGit(repoPath string) ([]map[string]any, error) {
 	if repoPath == "" {
 		repoPath = "."
 	}
@@ -16,7 +16,7 @@ func loadGit(repoPath string) (any, error) {
 		return nil, fmt.Errorf("git log in %s: %w", repoPath, err)
 	}
 
-	commits := map[string]any{}
+	var rows []map[string]any
 	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
 		if line == "" {
 			continue
@@ -25,12 +25,13 @@ func loadGit(repoPath string) (any, error) {
 		if len(parts) != 5 {
 			return nil, fmt.Errorf("malformed git log line: %q", line)
 		}
-		commits[parts[0]] = map[string]any{
+		rows = append(rows, map[string]any{
+			"commit":  parts[0],
 			"author":  parts[1],
 			"email":   parts[2],
 			"time":    parts[3],
 			"subject": parts[4],
-		}
+		})
 	}
-	return commits, nil
+	return rows, nil
 }

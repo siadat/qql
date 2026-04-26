@@ -4,64 +4,10 @@ import (
 	"fmt"
 	"io"
 	"sort"
-	"strconv"
 	"strings"
 )
 
-type row struct {
-	id   string
-	cols map[string]any
-}
-
-func buildRows(path string, value any) []row {
-	m, ok := value.(map[string]any)
-	if !ok {
-		cols := map[string]any{}
-		flatten(value, "", cols)
-		return []row{{id: path, cols: cols}}
-	}
-
-	rows := make([]row, 0, len(m))
-	for k, v := range m {
-		cols := map[string]any{}
-		flatten(v, "", cols)
-		rows = append(rows, row{id: k, cols: cols})
-	}
-	return rows
-}
-
-func flatten(v any, prefix string, out map[string]any) {
-	switch x := v.(type) {
-	case map[string]any:
-		if len(x) == 0 {
-			return
-		}
-		keys := make([]string, 0, len(x))
-		for k := range x {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			flatten(x[k], joinPath(prefix, k), out)
-		}
-	case []any:
-		if len(x) == 0 {
-			return
-		}
-		for i, e := range x {
-			flatten(e, joinPath(prefix, strconv.Itoa(i)), out)
-		}
-	default:
-		out[prefix] = x
-	}
-}
-
-func joinPath(prefix, key string) string {
-	if prefix == "" {
-		return key
-	}
-	return prefix + "." + key
-}
+type row = map[string]any
 
 func resolveCols(rows []row, selected []string) []string {
 	if selected != nil {
@@ -69,10 +15,8 @@ func resolveCols(rows []row, selected []string) []string {
 	}
 	colSet := map[string]struct{}{}
 	for _, r := range rows {
-		for k := range r.cols {
-			if k != "id" {
-				colSet[k] = struct{}{}
-			}
+		for k := range r {
+			colSet[k] = struct{}{}
 		}
 	}
 	auto := make([]string, 0, len(colSet))
@@ -80,17 +24,14 @@ func resolveCols(rows []row, selected []string) []string {
 		auto = append(auto, c)
 	}
 	sort.Strings(auto)
-	return append([]string{"id"}, auto...)
+	return auto
 }
 
 func printTable(w io.Writer, rows []row, selected []string) {
 	cols := resolveCols(rows, selected)
 
 	cellAt := func(r row, c string) string {
-		if c == "id" {
-			return r.id
-		}
-		v, ok := r.cols[c]
+		v, ok := r[c]
 		if !ok || v == nil {
 			return "null"
 		}

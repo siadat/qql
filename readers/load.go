@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-func Load(path string) (any, error) {
+func Load(path string) ([]map[string]any, error) {
 	if rest, ok := strings.CutPrefix(path, "git:"); ok {
 		return loadGit(rest)
 	}

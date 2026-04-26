@@ -101,9 +101,9 @@ func TestParseSQLErrors(t *testing.T) {
 
 func TestParseSQLEvalIntegration(t *testing.T) {
 	rows := []row{
-		{id: "alice", cols: map[string]any{"age": 30, "city": "SF"}},
-		{id: "bob", cols: map[string]any{"age": 25, "city": "NYC"}},
-		{id: "carol", cols: map[string]any{"age": 41, "city": "LA"}},
+		{"id": "alice", "age": 30, "city": "SF"},
+		{"id": "bob", "age": 25, "city": "NYC"},
+		{"id": "carol", "age": 41, "city": "LA"},
 	}
 
 	_, _, pred, err := parseSQL("SELECT age WHERE age >= 30")
@@ -113,7 +113,7 @@ func TestParseSQLEvalIntegration(t *testing.T) {
 	var got []string
 	for _, r := range rows {
 		if pred.Eval(r) {
-			got = append(got, r.id)
+			got = append(got, r["id"].(string))
 		}
 	}
 	if want := []string{"alice", "carol"}; !reflect.DeepEqual(got, want) {
