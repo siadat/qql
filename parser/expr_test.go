@@ -8,9 +8,9 @@ import (
 
 func TestEval(t *testing.T) {
 	rows := []row{
-		{"id": "alice", "age": 30, "address.city": "SF", "tags.0": "eng", "active": true, "score": 95.5},
-		{"id": "bob", "age": 25, "address.city": "NYC", "active": false},
-		{"id": "carol", "age": 41, "address.city": "LA", "active": true, "middle_name": nil},
+		{"key": "alice", "age": 30, "address.city": "SF", "tags.0": "eng", "active": true, "score": 95.5},
+		{"key": "bob", "age": 25, "address.city": "NYC", "active": false},
+		{"key": "carol", "age": 41, "address.city": "LA", "active": true, "middle_name": nil},
 	}
 
 	cases := []struct {
@@ -31,7 +31,7 @@ func TestEval(t *testing.T) {
 		{"neq str", `address.city != "SF"`, []string{"bob", "carol"}},
 		{"lt str", `address.city < "M"`, []string{"carol"}},
 
-		{"id eq", `id = "alice"`, []string{"alice"}},
+		{"key eq", `key = "alice"`, []string{"alice"}},
 
 		{"bool true", "active = true", []string{"alice", "carol"}},
 		{"bool false", "active = false", []string{"bob"}},
@@ -77,7 +77,7 @@ func TestEval(t *testing.T) {
 			var got []string
 			for _, r := range rows {
 				if expr.Eval(r) {
-					got = append(got, r["id"].(string))
+					got = append(got, r["key"].(string))
 				}
 			}
 			if !reflect.DeepEqual(got, c.want) {

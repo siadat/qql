@@ -6,7 +6,10 @@ import (
 	"strings"
 )
 
-func loadGit(repoPath string) ([]map[string]any, error) {
+func loadGit(repoPath, prefix string) ([]map[string]any, error) {
+	if prefix != "" && prefix != "*" {
+		return nil, fmt.Errorf("git provider does not support WITH prefix = %q", prefix)
+	}
 	if repoPath == "" {
 		repoPath = "."
 	}

@@ -14,21 +14,21 @@ func TestPrintJSON(t *testing.T) {
 		{
 			name: "rows with mixed types",
 			rows: []row{
-				{"id": "alice", "age": 30, "city": "SF"},
-				{"id": "bob", "age": 25, "active": false},
+				{"key": "alice", "age": 30, "city": "SF"},
+				{"key": "bob", "age": 25, "active": false},
 			},
 			want: `[
   {
     "active": null,
     "age": 30,
     "city": "SF",
-    "id": "alice"
+    "key": "alice"
   },
   {
     "active": false,
     "age": 25,
     "city": null,
-    "id": "bob"
+    "key": "bob"
   }
 ]
 `,
@@ -60,11 +60,11 @@ func TestPrintJSONL(t *testing.T) {
 		{
 			name: "rows with mixed types",
 			rows: []row{
-				{"id": "alice", "age": 30, "city": "SF"},
-				{"id": "bob", "age": 25, "active": false},
+				{"key": "alice", "age": 30, "city": "SF"},
+				{"key": "bob", "age": 25, "active": false},
 			},
-			want: `{"active":null,"age":30,"city":"SF","id":"alice"}
-{"active":false,"age":25,"city":null,"id":"bob"}
+			want: `{"active":null,"age":30,"city":"SF","key":"alice"}
+{"active":false,"age":25,"city":null,"key":"bob"}
 `,
 		},
 		{

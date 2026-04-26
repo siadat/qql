@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-func loadJSON(path string) ([]map[string]any, error) {
+func loadJSON(path, prefix string) ([]map[string]any, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -19,5 +19,5 @@ func loadJSON(path string) ([]map[string]any, error) {
 	if err := dec.Decode(&v); err != nil {
 		return nil, fmt.Errorf("decode %s: %w", path, err)
 	}
-	return buildRows(v), nil
+	return buildRows(v, prefix)
 }

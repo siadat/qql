@@ -4,6 +4,7 @@ ORIGIN = origin
 .PHONY: test check-version release-github
 
 test:
+	go vet ./...
 	go test -v -count=1 ./...
 
 # Pre-release sanity checks. Runs as a prerequisite of release targets, but is

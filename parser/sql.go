@@ -34,6 +34,7 @@ const (
 	tokBy
 	tokAsc
 	tokDesc
+	tokWith
 	tokComma
 	tokStar
 	tokSource
@@ -104,6 +105,8 @@ func tokenize(src string) ([]token, error) {
 				kind = tokAsc
 			case "desc":
 				kind = tokDesc
+			case "with":
+				kind = tokWith
 			}
 			toks = append(toks, token{kind, text, start})
 		case isDigit(c):
@@ -206,10 +209,10 @@ type OrderTerm struct {
 	Desc bool
 }
 
-func ParseSQL(src string) (selected []string, source string, pred WhereExpr, orderBy []OrderTerm, err error) {
+func ParseSQL(src string) (selected []string, source string, pred WhereExpr, orderBy []OrderTerm, prefix string, err error) {
 	toks, err := tokenize(src)
 	if err != nil {
-		return nil, "", nil, nil, err
+		return nil, "", nil, nil, "", err
 	}
 	p := &parseState{toks: toks}
 
@@ -217,7 +220,7 @@ func ParseSQL(src string) (selected []string, source string, pred WhereExpr, ord
 		p.advance()
 		selected, err = parseSelectList(p)
 		if err != nil {
-			return nil, "", nil, nil, err
+			return nil, "", nil, nil, "", err
 		}
 	}
 
@@ -225,7 +228,7 @@ func ParseSQL(src string) (selected []string, source string, pred WhereExpr, ord
 		p.advance()
 		t := p.peek()
 		if t.kind != tokSource {
-			return nil, "", nil, nil, fmt.Errorf("expected source after FROM at offset %d, got %q", t.pos, t.text)
+			return nil, "", nil, nil, "", fmt.Errorf("expected source after FROM at offset %d, got %q", t.pos, t.text)
 		}
 		p.advance()
 		source = t.text
@@ -235,7 +238,7 @@ func ParseSQL(src string) (selected []string, source string, pred WhereExpr, ord
 		p.advance()
 		pred, err = p.parseOr()
 		if err != nil {
-			return nil, "", nil, nil, err
+			return nil, "", nil, nil, "", err
 		}
 	}
 
@@ -243,18 +246,64 @@ func ParseSQL(src string) (selected []string, source string, pred WhereExpr, ord
 		p.advance()
 		t := p.advance()
 		if t.kind != tokBy {
-			return nil, "", nil, nil, fmt.Errorf("expected BY after ORDER at offset %d, got %q", t.pos, t.text)
+			return nil, "", nil, nil, "", fmt.Errorf("expected BY after ORDER at offset %d, got %q", t.pos, t.text)
 		}
 		orderBy, err = parseOrderBy(p)
 		if err != nil {
-			return nil, "", nil, nil, err
+			return nil, "", nil, nil, "", err
+		}
+	}
+
+	if p.peek().kind == tokWith {
+		p.advance()
+		prefix, err = parseWith(p)
+		if err != nil {
+			return nil, "", nil, nil, "", err
 		}
 	}
 
 	if t := p.peek(); t.kind != tokEOF {
-		return nil, "", nil, nil, fmt.Errorf("unexpected token %q at offset %d", t.text, t.pos)
+		return nil, "", nil, nil, "", fmt.Errorf("unexpected token %q at offset %d", t.text, t.pos)
 	}
-	return selected, source, pred, orderBy, nil
+	return selected, source, pred, orderBy, prefix, nil
+}
+
+// parseWith reads a comma-separated list of `key = string` pairs after the
+// WITH keyword. Only `prefix` is recognized today; other keys error. Returns
+// the value bound to `prefix`, or "" if the clause is empty (which is treated
+// by callers as "no path specified" — equivalent to the default top-level row
+// layout).
+func parseWith(p *parseState) (prefix string, err error) {
+	seenPrefix := false
+	for {
+		k := p.advance()
+		if k.kind != tokIdent {
+			return "", fmt.Errorf("expected key in WITH at offset %d, got %q", k.pos, k.text)
+		}
+		eq := p.advance()
+		if eq.kind != tokEq {
+			return "", fmt.Errorf("expected '=' after WITH key at offset %d, got %q", eq.pos, eq.text)
+		}
+		v := p.advance()
+		if v.kind != tokString {
+			return "", fmt.Errorf("expected string value in WITH at offset %d, got %q", v.pos, v.text)
+		}
+		switch strings.ToLower(k.text) {
+		case "prefix":
+			if seenPrefix {
+				return "", fmt.Errorf("duplicate WITH key %q at offset %d", k.text, k.pos)
+			}
+			prefix = v.text
+			seenPrefix = true
+		default:
+			return "", fmt.Errorf("unknown WITH key %q at offset %d", k.text, k.pos)
+		}
+		if p.peek().kind != tokComma {
+			break
+		}
+		p.advance()
+	}
+	return prefix, nil
 }
 
 func parseOrderBy(p *parseState) ([]OrderTerm, error) {

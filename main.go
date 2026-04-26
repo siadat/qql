@@ -26,13 +26,14 @@ func main() {
 	var pred parser.WhereExpr
 	var sqlSource string
 	var orderBy []parser.OrderTerm
+	var prefix string
 	if *sqlFlag != "" {
-		s, src, p, ob, err := parser.ParseSQL(*sqlFlag)
+		s, src, p, ob, rp, err := parser.ParseSQL(*sqlFlag)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)
 		}
-		selected, sqlSource, pred, orderBy = s, src, p, ob
+		selected, sqlSource, pred, orderBy, prefix = s, src, p, ob, rp
 	}
 
 	var paths []string
@@ -47,7 +48,7 @@ func main() {
 
 	var rows []row
 	for _, path := range paths {
-		pathRows, err := providers.Load(path)
+		pathRows, err := providers.Load(path, prefix)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
