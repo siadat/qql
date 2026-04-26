@@ -30,6 +30,10 @@ const (
 	tokSelect
 	tokFrom
 	tokWhere
+	tokOrder
+	tokBy
+	tokAsc
+	tokDesc
 	tokComma
 	tokStar
 	tokSource
@@ -92,6 +96,14 @@ func tokenize(src string) ([]token, error) {
 				kind = tokFrom
 			case "where":
 				kind = tokWhere
+			case "order":
+				kind = tokOrder
+			case "by":
+				kind = tokBy
+			case "asc":
+				kind = tokAsc
+			case "desc":
+				kind = tokDesc
 			}
 			toks = append(toks, token{kind, text, start})
 		case isDigit(c):
@@ -189,10 +201,15 @@ func (p *parser) advance() token {
 	return t
 }
 
-func parseSQL(src string) (selected []string, source string, pred whereExpr, err error) {
+type orderTerm struct {
+	col  string
+	desc bool
+}
+
+func parseSQL(src string) (selected []string, source string, pred whereExpr, orderBy []orderTerm, err error) {
 	toks, err := tokenize(src)
 	if err != nil {
-		return nil, "", nil, err
+		return nil, "", nil, nil, err
 	}
 	p := &parser{toks: toks}
 
@@ -200,7 +217,7 @@ func parseSQL(src string) (selected []string, source string, pred whereExpr, err
 		p.advance()
 		selected, err = parseSelectList(p)
 		if err != nil {
-			return nil, "", nil, err
+			return nil, "", nil, nil, err
 		}
 	}
 
@@ -208,7 +225,7 @@ func parseSQL(src string) (selected []string, source string, pred whereExpr, err
 		p.advance()
 		t := p.peek()
 		if t.kind != tokSource {
-			return nil, "", nil, fmt.Errorf("expected source after FROM at offset %d, got %q", t.pos, t.text)
+			return nil, "", nil, nil, fmt.Errorf("expected source after FROM at offset %d, got %q", t.pos, t.text)
 		}
 		p.advance()
 		source = t.text
@@ -218,14 +235,50 @@ func parseSQL(src string) (selected []string, source string, pred whereExpr, err
 		p.advance()
 		pred, err = p.parseOr()
 		if err != nil {
-			return nil, "", nil, err
+			return nil, "", nil, nil, err
+		}
+	}
+
+	if p.peek().kind == tokOrder {
+		p.advance()
+		t := p.advance()
+		if t.kind != tokBy {
+			return nil, "", nil, nil, fmt.Errorf("expected BY after ORDER at offset %d, got %q", t.pos, t.text)
+		}
+		orderBy, err = parseOrderBy(p)
+		if err != nil {
+			return nil, "", nil, nil, err
 		}
 	}
 
 	if t := p.peek(); t.kind != tokEOF {
-		return nil, "", nil, fmt.Errorf("unexpected token %q at offset %d", t.text, t.pos)
+		return nil, "", nil, nil, fmt.Errorf("unexpected token %q at offset %d", t.text, t.pos)
 	}
-	return selected, source, pred, nil
+	return selected, source, pred, orderBy, nil
+}
+
+func parseOrderBy(p *parser) ([]orderTerm, error) {
+	var terms []orderTerm
+	for {
+		t := p.advance()
+		if t.kind != tokIdent {
+			return nil, fmt.Errorf("expected column name in ORDER BY at offset %d, got %q", t.pos, t.text)
+		}
+		term := orderTerm{col: t.text}
+		switch p.peek().kind {
+		case tokAsc:
+			p.advance()
+		case tokDesc:
+			p.advance()
+			term.desc = true
+		}
+		terms = append(terms, term)
+		if p.peek().kind != tokComma {
+			break
+		}
+		p.advance()
+	}
+	return terms, nil
 }
 
 func parseSelectList(p *parser) ([]string, error) {

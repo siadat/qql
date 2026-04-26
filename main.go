@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sort"
 
 	"github.com/siadat/qql/providers"
 )
@@ -23,13 +24,14 @@ func main() {
 	var selected []string
 	var pred whereExpr
 	var sqlSource string
+	var orderBy []orderTerm
 	if *sqlFlag != "" {
-		s, src, p, err := parseSQL(*sqlFlag)
+		s, src, p, ob, err := parseSQL(*sqlFlag)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)
 		}
-		selected, sqlSource, pred = s, src, p
+		selected, sqlSource, pred, orderBy = s, src, p, ob
 	}
 
 	var paths []string
@@ -60,6 +62,21 @@ func main() {
 			}
 		}
 		rows = filtered
+	}
+
+	if len(orderBy) > 0 {
+		sort.SliceStable(rows, func(i, j int) bool {
+			for _, term := range orderBy {
+				c := compareValues(rows[i][term.col], rows[j][term.col])
+				if term.desc {
+					c = -c
+				}
+				if c != 0 {
+					return c < 0
+				}
+			}
+			return false
+		})
 	}
 
 	switch outFlag {

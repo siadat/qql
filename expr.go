@@ -103,6 +103,80 @@ func (e *cmpExpr) Eval(r row) bool {
 	return false
 }
 
+// compareValues returns -1, 0, or 1 in a total order across qql's runtime types.
+// Values of different types are ordered by type rank (nil < bool < number < string < other);
+// within a rank, natural ordering applies. Unknown types tie so stable sort preserves input order.
+func compareValues(a, b any) int {
+	ra, rb := typeRank(a), typeRank(b)
+	if ra != rb {
+		if ra < rb {
+			return -1
+		}
+		return 1
+	}
+	switch ra {
+	case rankNil:
+		return 0
+	case rankBool:
+		ab, bb := a.(bool), b.(bool)
+		switch {
+		case ab == bb:
+			return 0
+		case !ab:
+			return -1
+		default:
+			return 1
+		}
+	case rankNumber:
+		af, _ := toFloat(a)
+		bf, _ := toFloat(b)
+		switch {
+		case af < bf:
+			return -1
+		case af > bf:
+			return 1
+		default:
+			return 0
+		}
+	case rankString:
+		as, bs := a.(string), b.(string)
+		switch {
+		case as < bs:
+			return -1
+		case as > bs:
+			return 1
+		default:
+			return 0
+		}
+	default:
+		return 0
+	}
+}
+
+const (
+	rankNil = iota
+	rankBool
+	rankNumber
+	rankString
+	rankOther
+)
+
+func typeRank(v any) int {
+	if v == nil {
+		return rankNil
+	}
+	switch v.(type) {
+	case bool:
+		return rankBool
+	case json.Number, float64, float32, int, int64, uint64:
+		return rankNumber
+	case string:
+		return rankString
+	default:
+		return rankOther
+	}
+}
+
 func toFloat(v any) (float64, bool) {
 	switch x := v.(type) {
 	case json.Number:
