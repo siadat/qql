@@ -5,7 +5,7 @@ import (
 	"io"
 	"sort"
 	"strconv"
-	"text/tabwriter"
+	"strings"
 )
 
 type row struct {
@@ -82,24 +82,61 @@ func printTable(w io.Writer, rows []row) {
 	}
 	sort.Strings(cols)
 
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprint(tw, "id")
-	for _, c := range cols {
-		fmt.Fprintf(tw, "\t%s", c)
+	cellAt := func(r row, c string) string {
+		v, ok := r.cols[c]
+		if !ok || v == nil {
+			return "null"
+		}
+		return fmt.Sprintf("%v", v)
 	}
-	fmt.Fprintln(tw)
 
+	widths := make([]int, len(cols)+1)
+	widths[0] = len("id")
+	for i, c := range cols {
+		widths[i+1] = len(c)
+	}
 	for _, r := range rows {
-		fmt.Fprint(tw, r.id)
-		for _, c := range cols {
-			v, ok := r.cols[c]
-			if !ok || v == nil {
-				fmt.Fprint(tw, "\tnull")
-			} else {
-				fmt.Fprintf(tw, "\t%v", v)
+		if len(r.id) > widths[0] {
+			widths[0] = len(r.id)
+		}
+		for i, c := range cols {
+			if s := cellAt(r, c); len(s) > widths[i+1] {
+				widths[i+1] = len(s)
 			}
 		}
-		fmt.Fprintln(tw)
 	}
-	tw.Flush()
+
+	const gap = "  "
+	writeRow := func(values []string) {
+		for i, v := range values {
+			if i > 0 {
+				fmt.Fprint(w, gap)
+			}
+			fmt.Fprint(w, v)
+			if i < len(values)-1 {
+				if pad := widths[i] - len(v); pad > 0 {
+					fmt.Fprint(w, strings.Repeat(" ", pad))
+				}
+			}
+		}
+		fmt.Fprintln(w)
+	}
+
+	header := append([]string{"id"}, cols...)
+	writeRow(header)
+
+	sep := make([]string, len(widths))
+	for i, width := range widths {
+		sep[i] = strings.Repeat("-", width)
+	}
+	writeRow(sep)
+
+	for _, r := range rows {
+		vals := make([]string, len(cols)+1)
+		vals[0] = r.id
+		for i, c := range cols {
+			vals[i+1] = cellAt(r, c)
+		}
+		writeRow(vals)
+	}
 }
