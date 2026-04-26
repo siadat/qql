@@ -26,6 +26,9 @@ Run:
 
 ```
 $ qql --sql "SELECT id, cpu, ram WHERE status = 'up' AND cpu >= 16" testdata/servers.yaml
+```
+Output
+```
 id    cpu  ram
 ----  ---  ---
 web3  16   64
