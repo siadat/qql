@@ -1,4 +1,4 @@
-package main
+package parser
 
 import (
 	"encoding/json"
@@ -70,7 +70,7 @@ func TestEval(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			expr, err := parseWhere(c.expr)
+			expr, err := ParseWhere(c.expr)
 			if err != nil {
 				t.Fatalf("parse %q: %v", c.expr, err)
 			}
@@ -105,7 +105,7 @@ func TestEvalJSONNumber(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.expr, func(t *testing.T) {
-			expr, err := parseWhere(c.expr)
+			expr, err := ParseWhere(c.expr)
 			if err != nil {
 				t.Fatalf("parse: %v", err)
 			}
@@ -159,8 +159,8 @@ func TestCompareValues(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := compareValues(c.a, c.b); got != c.want {
-				t.Errorf("compareValues(%v, %v) = %d, want %d", c.a, c.b, got, c.want)
+			if got := CompareValues(c.a, c.b); got != c.want {
+				t.Errorf("CompareValues(%v, %v) = %d, want %d", c.a, c.b, got, c.want)
 			}
 		})
 	}

@@ -1,22 +1,24 @@
-package main
+package parser
 
 import (
 	"encoding/json"
 )
 
-type whereExpr interface {
+type row = map[string]any
+
+type WhereExpr interface {
 	Eval(r row) bool
 }
 
-type orExpr struct{ left, right whereExpr }
+type orExpr struct{ left, right WhereExpr }
 
 func (e *orExpr) Eval(r row) bool { return e.left.Eval(r) || e.right.Eval(r) }
 
-type andExpr struct{ left, right whereExpr }
+type andExpr struct{ left, right WhereExpr }
 
 func (e *andExpr) Eval(r row) bool { return e.left.Eval(r) && e.right.Eval(r) }
 
-type notExpr struct{ inner whereExpr }
+type notExpr struct{ inner WhereExpr }
 
 func (e *notExpr) Eval(r row) bool { return !e.inner.Eval(r) }
 
@@ -103,10 +105,10 @@ func (e *cmpExpr) Eval(r row) bool {
 	return false
 }
 
-// compareValues returns -1, 0, or 1 in a total order across qql's runtime types.
+// CompareValues returns -1, 0, or 1 in a total order across qql's runtime types.
 // Values of different types are ordered by type rank (nil < bool < number < string < other);
 // within a rank, natural ordering applies. Unknown types tie so stable sort preserves input order.
-func compareValues(a, b any) int {
+func CompareValues(a, b any) int {
 	ra, rb := typeRank(a), typeRank(b)
 	if ra != rb {
 		if ra < rb {

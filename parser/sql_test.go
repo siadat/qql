@@ -1,4 +1,4 @@
-package main
+package parser
 
 import (
 	"reflect"
@@ -12,7 +12,7 @@ func TestParseSQL(t *testing.T) {
 		wantCols    []string
 		wantSource  string
 		wantHasPred bool
-		wantOrderBy []orderTerm
+		wantOrderBy []OrderTerm
 	}{
 		{"empty", "", nil, "", false, nil},
 		{"select cols", "SELECT a, b, c", []string{"a", "b", "c"}, "", false, nil},
@@ -29,19 +29,19 @@ func TestParseSQL(t *testing.T) {
 		{"from path", "SELECT a FROM /tmp/foo.json WHERE x = 1", []string{"a"}, "/tmp/foo.json", true, nil},
 		{"from with colon", "FROM git:/home/me/repo", nil, "git:/home/me/repo", false, nil},
 
-		{"order by single asc default", "ORDER BY a", nil, "", false, []orderTerm{{col: "a"}}},
-		{"order by explicit asc", "ORDER BY a ASC", nil, "", false, []orderTerm{{col: "a"}}},
-		{"order by desc", "ORDER BY a DESC", nil, "", false, []orderTerm{{col: "a", desc: true}}},
-		{"order by multi", "ORDER BY a, b DESC, c", nil, "", false, []orderTerm{{col: "a"}, {col: "b", desc: true}, {col: "c"}}},
-		{"order by dot path", "ORDER BY user.age", nil, "", false, []orderTerm{{col: "user.age"}}},
-		{"order by lowercase", "order by a desc", nil, "", false, []orderTerm{{col: "a", desc: true}}},
-		{"select where order by", "SELECT a WHERE b = 1 ORDER BY a DESC", []string{"a"}, "", true, []orderTerm{{col: "a", desc: true}}},
-		{"select from where order by", "SELECT * FROM git:. WHERE author = 'Sina' ORDER BY time DESC", nil, "git:.", true, []orderTerm{{col: "time", desc: true}}},
+		{"order by single asc default", "ORDER BY a", nil, "", false, []OrderTerm{{Col: "a"}}},
+		{"order by explicit asc", "ORDER BY a ASC", nil, "", false, []OrderTerm{{Col: "a"}}},
+		{"order by desc", "ORDER BY a DESC", nil, "", false, []OrderTerm{{Col: "a", Desc: true}}},
+		{"order by multi", "ORDER BY a, b DESC, c", nil, "", false, []OrderTerm{{Col: "a"}, {Col: "b", Desc: true}, {Col: "c"}}},
+		{"order by dot path", "ORDER BY user.age", nil, "", false, []OrderTerm{{Col: "user.age"}}},
+		{"order by lowercase", "order by a desc", nil, "", false, []OrderTerm{{Col: "a", Desc: true}}},
+		{"select where order by", "SELECT a WHERE b = 1 ORDER BY a DESC", []string{"a"}, "", true, []OrderTerm{{Col: "a", Desc: true}}},
+		{"select from where order by", "SELECT * FROM git:. WHERE author = 'Sina' ORDER BY time DESC", nil, "git:.", true, []OrderTerm{{Col: "time", Desc: true}}},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			cols, source, pred, orderBy, err := parseSQL(c.src)
+			cols, source, pred, orderBy, err := ParseSQL(c.src)
 			if err != nil {
 				t.Fatalf("parse %q: %v", c.src, err)
 			}
@@ -79,7 +79,7 @@ func TestParseWhereErrors(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := parseWhere(c.expr)
+			_, err := ParseWhere(c.expr)
 			if err == nil {
 				t.Errorf("expected error for %q", c.expr)
 			}
@@ -112,7 +112,7 @@ func TestParseSQLErrors(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, _, _, _, err := parseSQL(c.src)
+			_, _, _, _, err := ParseSQL(c.src)
 			if err == nil {
 				t.Errorf("expected error for %q", c.src)
 			}
@@ -127,7 +127,7 @@ func TestParseSQLEvalIntegration(t *testing.T) {
 		{"id": "carol", "age": 41, "city": "LA"},
 	}
 
-	_, _, pred, _, err := parseSQL("SELECT age WHERE age >= 30")
+	_, _, pred, _, err := ParseSQL("SELECT age WHERE age >= 30")
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}

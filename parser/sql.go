@@ -1,4 +1,4 @@
-package main
+package parser
 
 import (
 	"fmt"
@@ -188,30 +188,30 @@ func isDigit(c byte) bool {
 	return c >= '0' && c <= '9'
 }
 
-type parser struct {
+type parseState struct {
 	toks []token
 	pos  int
 }
 
-func (p *parser) peek() token { return p.toks[p.pos] }
+func (p *parseState) peek() token { return p.toks[p.pos] }
 
-func (p *parser) advance() token {
+func (p *parseState) advance() token {
 	t := p.toks[p.pos]
 	p.pos++
 	return t
 }
 
-type orderTerm struct {
-	col  string
-	desc bool
+type OrderTerm struct {
+	Col  string
+	Desc bool
 }
 
-func parseSQL(src string) (selected []string, source string, pred whereExpr, orderBy []orderTerm, err error) {
+func ParseSQL(src string) (selected []string, source string, pred WhereExpr, orderBy []OrderTerm, err error) {
 	toks, err := tokenize(src)
 	if err != nil {
 		return nil, "", nil, nil, err
 	}
-	p := &parser{toks: toks}
+	p := &parseState{toks: toks}
 
 	if p.peek().kind == tokSelect {
 		p.advance()
@@ -257,20 +257,20 @@ func parseSQL(src string) (selected []string, source string, pred whereExpr, ord
 	return selected, source, pred, orderBy, nil
 }
 
-func parseOrderBy(p *parser) ([]orderTerm, error) {
-	var terms []orderTerm
+func parseOrderBy(p *parseState) ([]OrderTerm, error) {
+	var terms []OrderTerm
 	for {
 		t := p.advance()
 		if t.kind != tokIdent {
 			return nil, fmt.Errorf("expected column name in ORDER BY at offset %d, got %q", t.pos, t.text)
 		}
-		term := orderTerm{col: t.text}
+		term := OrderTerm{Col: t.text}
 		switch p.peek().kind {
 		case tokAsc:
 			p.advance()
 		case tokDesc:
 			p.advance()
-			term.desc = true
+			term.Desc = true
 		}
 		terms = append(terms, term)
 		if p.peek().kind != tokComma {
@@ -281,7 +281,7 @@ func parseOrderBy(p *parser) ([]orderTerm, error) {
 	return terms, nil
 }
 
-func parseSelectList(p *parser) ([]string, error) {
+func parseSelectList(p *parseState) ([]string, error) {
 	if p.peek().kind == tokStar {
 		p.advance()
 		return nil, nil
@@ -301,7 +301,7 @@ func parseSelectList(p *parser) ([]string, error) {
 	return cols, nil
 }
 
-func parseWhere(src string) (whereExpr, error) {
+func ParseWhere(src string) (WhereExpr, error) {
 	if strings.TrimSpace(src) == "" {
 		return nil, fmt.Errorf("empty where expression")
 	}
@@ -309,7 +309,7 @@ func parseWhere(src string) (whereExpr, error) {
 	if err != nil {
 		return nil, err
 	}
-	p := &parser{toks: toks}
+	p := &parseState{toks: toks}
 	e, err := p.parseOr()
 	if err != nil {
 		return nil, err
@@ -321,7 +321,7 @@ func parseWhere(src string) (whereExpr, error) {
 	return e, nil
 }
 
-func (p *parser) parseOr() (whereExpr, error) {
+func (p *parseState) parseOr() (WhereExpr, error) {
 	left, err := p.parseAnd()
 	if err != nil {
 		return nil, err
@@ -337,7 +337,7 @@ func (p *parser) parseOr() (whereExpr, error) {
 	return left, nil
 }
 
-func (p *parser) parseAnd() (whereExpr, error) {
+func (p *parseState) parseAnd() (WhereExpr, error) {
 	left, err := p.parseNot()
 	if err != nil {
 		return nil, err
@@ -353,7 +353,7 @@ func (p *parser) parseAnd() (whereExpr, error) {
 	return left, nil
 }
 
-func (p *parser) parseNot() (whereExpr, error) {
+func (p *parseState) parseNot() (WhereExpr, error) {
 	if p.peek().kind == tokNot {
 		p.advance()
 		inner, err := p.parseNot()
@@ -365,7 +365,7 @@ func (p *parser) parseNot() (whereExpr, error) {
 	return p.parsePrimary()
 }
 
-func (p *parser) parsePrimary() (whereExpr, error) {
+func (p *parseState) parsePrimary() (WhereExpr, error) {
 	if p.peek().kind == tokLParen {
 		p.advance()
 		e, err := p.parseOr()
@@ -382,7 +382,7 @@ func (p *parser) parsePrimary() (whereExpr, error) {
 	return p.parseComparison()
 }
 
-func (p *parser) parseComparison() (whereExpr, error) {
+func (p *parseState) parseComparison() (WhereExpr, error) {
 	left, err := p.parseOperand()
 	if err != nil {
 		return nil, err
@@ -413,7 +413,7 @@ func (p *parser) parseComparison() (whereExpr, error) {
 	return &cmpExpr{op: op, left: left, right: right}, nil
 }
 
-func (p *parser) parseOperand() (operand, error) {
+func (p *parseState) parseOperand() (operand, error) {
 	t := p.advance()
 	switch t.kind {
 	case tokIdent:

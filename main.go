@@ -6,6 +6,7 @@ import (
 	"os"
 	"sort"
 
+	"github.com/siadat/qql/parser"
 	"github.com/siadat/qql/providers"
 )
 
@@ -22,11 +23,11 @@ func main() {
 	flag.Parse()
 
 	var selected []string
-	var pred whereExpr
+	var pred parser.WhereExpr
 	var sqlSource string
-	var orderBy []orderTerm
+	var orderBy []parser.OrderTerm
 	if *sqlFlag != "" {
-		s, src, p, ob, err := parseSQL(*sqlFlag)
+		s, src, p, ob, err := parser.ParseSQL(*sqlFlag)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)
@@ -67,8 +68,8 @@ func main() {
 	if len(orderBy) > 0 {
 		sort.SliceStable(rows, func(i, j int) bool {
 			for _, term := range orderBy {
-				c := compareValues(rows[i][term.col], rows[j][term.col])
-				if term.desc {
+				c := parser.CompareValues(rows[i][term.Col], rows[j][term.Col])
+				if term.Desc {
 					c = -c
 				}
 				if c != 0 {

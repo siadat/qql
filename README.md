@@ -1,5 +1,7 @@
 # qql
 
+qql is a lightweight and extendable command-line data processor akin to `jq` for working with YAML and other data sources.
+
 ## Install
 
 ```
