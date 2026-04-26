@@ -1,4 +1,4 @@
-package main
+package readers
 
 import (
 	"fmt"
@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-func loadFile(path string) (any, error) {
+func Load(path string) (any, error) {
 	switch ext := strings.ToLower(filepath.Ext(path)); ext {
 	case ".json":
 		return loadJSON(path)

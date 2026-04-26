@@ -2,26 +2,8 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
-	"os"
 )
-
-func loadJSON(path string) (any, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	var v any
-	dec := json.NewDecoder(f)
-	dec.UseNumber()
-	if err := dec.Decode(&v); err != nil {
-		return nil, fmt.Errorf("decode %s: %w", path, err)
-	}
-	return v, nil
-}
 
 func rowsToJSON(rows []row, selected []string) []map[string]any {
 	cols := resolveCols(rows, selected)

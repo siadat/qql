@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+
+	"github.com/siadat/qql/readers"
 )
 
 func main() {
@@ -36,7 +38,7 @@ func main() {
 
 	var rows []row
 	for _, path := range paths {
-		v, err := loadFile(path)
+		v, err := readers.Load(path)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
