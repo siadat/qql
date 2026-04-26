@@ -1,5 +1,7 @@
 # qql
 
+[![test](https://github.com/siadat/qql/actions/workflows/test.yml/badge.svg)](https://github.com/siadat/qql/actions/workflows/test.yml)
+
 qql is a lightweight and extendable command-line data processor akin to `jq` for working with YAML and other data sources.
 
 ## Install
