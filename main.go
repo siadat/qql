@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/siadat/qql/readers"
+	"github.com/siadat/qql/providers"
 )
 
 func main() {
@@ -44,7 +44,7 @@ func main() {
 
 	var rows []row
 	for _, path := range paths {
-		pathRows, err := readers.Load(path)
+		pathRows, err := providers.Load(path)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
