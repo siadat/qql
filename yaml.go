@@ -1,12 +1,13 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
+
+	"gopkg.in/yaml.v3"
 )
 
-func loadJSON(path string) (any, error) {
+func loadYAML(path string) (any, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -14,8 +15,7 @@ func loadJSON(path string) (any, error) {
 	defer f.Close()
 
 	var v any
-	dec := json.NewDecoder(f)
-	dec.UseNumber()
+	dec := yaml.NewDecoder(f)
 	if err := dec.Decode(&v); err != nil {
 		return nil, fmt.Errorf("decode %s: %w", path, err)
 	}
