@@ -28,7 +28,7 @@ Keywords are case-insensitive. String literals use single or double quotes (no e
 
 ### SELECT
 
-`SELECT *` keeps every column. A comma-separated list of identifiers projects exactly those columns; identifiers may contain dot paths like `address.city` or `tags.0`. `SELECT COUNT(*)` collapses the post-WHERE result to a single row with one `count` column and cannot be combined with regular projections (see "Counting rows").
+`SELECT *` keeps every column. A comma-separated list of identifiers projects exactly those columns; identifiers may contain dot paths like `address.city` or `tags.0`. `SELECT COUNT(*)` collapses the post-WHERE result to a single row with one `count` column and cannot be combined with regular projections; only the bare `COUNT(*)` form is supported (no `COUNT(col)`, no `COUNT(DISTINCT ...)`).
 
 ### FROM
 
@@ -44,89 +44,19 @@ One or more `<column> [ASC|DESC]` terms separated by commas; `ASC` is the defaul
 
 ### LIMIT and OFFSET
 
-`LIMIT N` caps the number of rows after ORDER BY; `OFFSET M` skips the first M; the two combine as `LIMIT N OFFSET M` for top-N pagination. Both N and M are non-negative integers; `LIMIT 0` is valid and returns zero rows (see "Limit and offset").
+`LIMIT N` caps the number of rows after ORDER BY; `OFFSET M` skips the first M; the two combine as `LIMIT N OFFSET M` for top-N pagination, and `OFFSET` may appear without `LIMIT` to skip a prefix and return the rest. Both N and M are non-negative integers; `LIMIT 0` is valid and returns zero rows.
 
 ### WITH
 
 Trailing configuration. Recognized keys today are `prefix = '<glob>'` (extract rows from a nested path — see "Nested rows") and `provider = 'external:<script>'` (replace built-in dispatch with a user-supplied script — see "External providers").
 
-## Counting rows
-
-`SELECT COUNT(*)` collapses the (post-WHERE) result to a single row with one `count` column:
-
-```
-$ qql --sql "SELECT COUNT(*) WHERE status = 'up'" testdata/servers.yaml
-count
------
-4
-```
-
-Only `COUNT(*)` is supported — no `COUNT(col)`, no `COUNT(DISTINCT ...)`, no mixing with other selected columns. It composes with `WHERE`, `WITH prefix = ...`, and external providers.
-
-## Limit and offset
-
-Cap the number of rows with `LIMIT N` and skip the first `M` rows with `OFFSET M` (both non-negative integers). They run after `ORDER BY`, so combining all three gives paginated top-N queries:
-
-```
-$ qql --sql "SELECT key, cpu ORDER BY cpu DESC LIMIT 2 OFFSET 1" testdata/servers.yaml
-key   cpu
-----  ---
-web3  16
-web1  8
-```
-
-`LIMIT 0` returns zero rows. `OFFSET` works without `LIMIT` (skip M, return the rest). Clause order: `ORDER BY ... LIMIT ... OFFSET ... WITH ...`.
-
 ## Pattern matching
 
-The `MATCHES` operator runs a Go regular expression against the left-hand value:
-
-```
-$ qql --sql "SELECT key, cpu WHERE key MATCHES '^web'" testdata/servers.yaml
-key   cpu
-----  ---
-web1  8
-web2  8
-web3  16
-```
-
-Patterns are not anchored — use `^` and `$` for full matches. Combine with `NOT` to invert, e.g. `WHERE NOT key MATCHES '^web'`. Non-string values are coerced to their textual form, so `size MATCHES '^4\d+$'` works on numbers too. Invalid regexes fail at parse time.
+The `MATCHES` operator runs a Go regular expression against the left-hand value. Patterns are not anchored — use `^` and `$` for full matches. Combine with `NOT` to invert (e.g. `WHERE NOT key MATCHES '^web'`). Non-string values are coerced to their textual form, so a numeric column accepts patterns like `MATCHES '^4\d+$'`. Invalid regexes fail at parse time with the offset of the bad pattern.
 
 ## Nested rows
 
-When the rows of interest live deeper than the top level, point at them with `WITH prefix = '<path>'`. Each `*` segment in the path captures the matched key as a column. The rightmost `*` becomes `key` and shows the **full path from the root** through that row (so `*.servers` against the file below yields `key = "region-a.servers"`); earlier `*`s become `key_capture_1`, `key_capture_2`, … and show just the matched key for filtering convenience.
-
-Given `testdata/regions.yaml` (also included):
-
-```yaml
-region-a:
-  servers:
-    web1: {cpu: 8, ram: 32, status: up}
-    db1: {cpu: 32, ram: 128, status: up}
-region-b:
-  servers:
-    web1: {cpu: 4, ram: 16, status: down}
-    cache1: {cpu: 4, ram: 16, status: up}
-region-c:
-  servers:
-    web1: {cpu: 16, ram: 64, status: up}
-    web2: {cpu: 8, ram: 32, status: down}
-```
-
-Run:
-
-```
-$ qql --sql "SELECT key, key_capture_1, cpu, ram WHERE status = 'up' ORDER BY cpu DESC, key_capture_1 WITH prefix = '*.servers.*'" testdata/regions.yaml
-```
-Output:
-```
-key                      key_capture_1  cpu  ram
------------------------  -------------  ---  ---
-region-a.servers.db1     region-a       32   128
-region-c.servers.web1    region-c       16   64
-region-a.servers.web1    region-a       8    32
-region-b.servers.cache1  region-b       4    16
-```
+When the rows of interest live deeper than the top level, point at them with `WITH prefix = '<path>'`. Path segments are dot-separated. A `*` segment matches any map key and captures it as a column; literal segments descend without capturing; branches that don't match are silently skipped. The rightmost `*` becomes the `key` column and carries the full path from the root through the row (so `*.servers` against a regions/servers tree yields keys like `region-a.servers`); earlier `*`s become `key_capture_1`, `key_capture_2`, … and carry just the matched key, suitable for `WHERE` filtering.
 
 ## External providers
 
