@@ -12,7 +12,7 @@ go install github.com/siadat/qql@latest
 
 ## Example
 
-Given `servers.yaml`:
+Given `testdata/servers.yaml` (included in the repo):
 
 ```yaml
 web1: {cpu: 8, ram: 32, status: up, role: web}
@@ -25,7 +25,7 @@ cache1: {cpu: 4, ram: 16, status: up, role: cache}
 Run:
 
 ```
-$ qql --sql "SELECT id, cpu, ram WHERE status = 'up' AND cpu >= 16" servers.yaml
+$ qql --sql "SELECT id, cpu, ram WHERE status = 'up' AND cpu >= 16" testdata/servers.yaml
 id    cpu  ram
 ----  ---  ---
 web3  16   64
