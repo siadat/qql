@@ -9,8 +9,9 @@ import (
 
 func main() {
 	selectFlag := flag.String("select", "", "comma-separated list of columns to include")
+	whereFlag := flag.String("where", "", "filter expression, e.g. \"age >= 30 AND active = true\"")
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "usage: %s [--select col1,col2,...] <file> [file ...]\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "usage: %s [--select col1,col2,...] [--where EXPR] <file> [file ...]\n", os.Args[0])
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -30,6 +31,16 @@ func main() {
 		}
 	}
 
+	var pred whereExpr
+	if *whereFlag != "" {
+		p, err := parseWhere(*whereFlag)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+		pred = p
+	}
+
 	var rows []row
 	for _, path := range paths {
 		v, err := loadFile(path)
@@ -38,6 +49,16 @@ func main() {
 			os.Exit(1)
 		}
 		rows = append(rows, buildRows(path, v)...)
+	}
+
+	if pred != nil {
+		filtered := rows[:0]
+		for _, r := range rows {
+			if pred.Eval(r) {
+				filtered = append(filtered, r)
+			}
+		}
+		rows = filtered
 	}
 
 	printTable(os.Stdout, rows, selected)
