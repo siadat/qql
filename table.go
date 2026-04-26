@@ -94,7 +94,7 @@ func printTable(w io.Writer, rows []row) {
 		for _, c := range cols {
 			v, ok := r.cols[c]
 			if !ok || v == nil {
-				fmt.Fprint(tw, "\t")
+				fmt.Fprint(tw, "\tnull")
 			} else {
 				fmt.Fprintf(tw, "\t%v", v)
 			}
