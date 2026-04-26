@@ -12,6 +12,31 @@ Run `go install github.com/siadat/qql@latest`.
 
 `qql [--sql QUERY] [-o FORMAT] [--no-header] <file> [file ...]`. Output formats are `table` (default), `json`, and `jsonl`. Sources are dispatched by extension — `.json` and `.yaml`/`.yml` use built-in providers — or by source-prefix `git:<repo>` for git log rows.
 
+## Example
+
+Given `testdata/servers.yaml` (included in the repo):
+
+```yaml
+web1: {cpu: 8, ram: 32, status: up, role: web}
+web2: {cpu: 8, ram: 32, status: down, role: web}
+web3: {cpu: 16, ram: 64, status: up, role: web}
+db1: {cpu: 32, ram: 128, status: up, role: db}
+cache1: {cpu: 4, ram: 16, status: up, role: cache}
+```
+
+Run:
+
+```
+$ qql --sql "SELECT key, cpu, ram WHERE status = 'up' AND cpu >= 16" testdata/servers.yaml
+```
+Output:
+```
+key   cpu  ram
+----  ---  ---
+web3  16   64
+db1   32   128
+```
+
 ## Query syntax
 
 A query is a sequence of clauses written in this fixed order; every clause is optional:
@@ -36,7 +61,11 @@ A path to a YAML/JSON file, or `git:<repo>` for git log rows. When absent, posit
 
 ### WHERE
 
-A boolean expression over column references and literals. Comparison operators are `=`, `!=`, `<`, `<=`, `>`, `>=`. The pattern operator `MATCHES '<regex>'` runs a Go regular expression against the value (see "Pattern matching"). Logical connectives are `AND`, `OR`, `NOT`, with parentheses for grouping. Type mismatches between operands evaluate to false; only `= null` / `!= null` are useful — relational comparisons against `null` yield false.
+A boolean expression over column references and literals. Comparison operators are `=`, `!=`, `<`, `<=`, `>`, `>=`. The pattern operator `MATCHES '<regex>'` runs a Go regular expression against the value. Logical connectives are `AND`, `OR`, `NOT`, with parentheses for grouping. Type mismatches between operands evaluate to false; only `= null` / `!= null` are useful — relational comparisons against `null` yield false.
+
+### MATCHES
+
+`<value> MATCHES '<regex>'` is a `WHERE` operator that tests the left-hand value against a Go regular expression. Patterns are not anchored — use `^` and `$` for full matches. Combine with `NOT` to invert (e.g. `WHERE NOT key MATCHES '^web'`). Non-string values are coerced to their textual form, so a numeric column accepts patterns like `MATCHES '^4\d+$'`. Invalid regexes fail at parse time with the offset of the bad pattern.
 
 ### ORDER BY
 
@@ -48,15 +77,10 @@ One or more `<column> [ASC|DESC]` terms separated by commas; `ASC` is the defaul
 
 ### WITH
 
-Trailing configuration. Recognized keys today are `prefix = '<glob>'` (extract rows from a nested path — see "Nested rows") and `provider = 'external:<script>'` (replace built-in dispatch with a user-supplied script — see "External providers").
+Trailing configuration as a comma-separated list of `<key> = '<value>'` pairs. Recognized keys:
 
-## Pattern matching
-
-The `MATCHES` operator runs a Go regular expression against the left-hand value. Patterns are not anchored — use `^` and `$` for full matches. Combine with `NOT` to invert (e.g. `WHERE NOT key MATCHES '^web'`). Non-string values are coerced to their textual form, so a numeric column accepts patterns like `MATCHES '^4\d+$'`. Invalid regexes fail at parse time with the offset of the bad pattern.
-
-## Nested rows
-
-When the rows of interest live deeper than the top level, point at them with `WITH prefix = '<path>'`. Path segments are dot-separated. A `*` segment matches any map key and captures it as a column; literal segments descend without capturing; branches that don't match are silently skipped. The rightmost `*` becomes the `key` column and carries the full path from the root through the row (so `*.servers` against a regions/servers tree yields keys like `region-a.servers`); earlier `*`s become `key_capture_1`, `key_capture_2`, … and carry just the matched key, suitable for `WHERE` filtering.
+- `prefix = '<glob>'` — extract rows from a nested dot-path. A `*` segment matches any map key and captures it; literal segments descend without capturing; non-matching branches are silently skipped. The rightmost `*` becomes the `key` column and carries the full path from the root (e.g. `*.servers` yields `key = "region-a.servers"`); earlier `*`s become `key_capture_1`, `key_capture_2`, … and carry just the matched key, useful for `WHERE` filtering.
+- `provider = 'external:<script>'` — replace built-in dispatch with a user-supplied script (see "External providers").
 
 ## External providers
 
