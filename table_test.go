@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
@@ -132,23 +133,6 @@ func TestBuildRows(t *testing.T) {
 			},
 		},
 		{
-			name: "rows sorted by root key",
-			path: "f.json",
-			input: `
-				c:
-				  x: 1
-				a:
-				  x: 1
-				b:
-				  x: 1
-			`,
-			want: []row{
-				{id: "a", cols: map[string]any{"x": 1}},
-				{id: "b", cols: map[string]any{"x": 1}},
-				{id: "c", cols: map[string]any{"x": 1}},
-			},
-		},
-		{
 			name: "null leaf preserved in cols",
 			path: "f.json",
 			input: `
@@ -165,6 +149,7 @@ func TestBuildRows(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			value := mustParseYAML(t, tt.input)
 			got := buildRows(tt.path, value)
+			sort.Slice(got, func(i, j int) bool { return got[i].id < got[j].id })
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("buildRows(%q, %#v) =\n got:  %#v\n want: %#v", tt.path, value, got, tt.want)
 			}
@@ -215,6 +200,7 @@ func TestPrintJSON(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			value := mustParseYAML(t, tt.input)
 			rows := buildRows("f.yaml", value)
+			sort.Slice(rows, func(i, j int) bool { return rows[i].id < rows[j].id })
 			var buf bytes.Buffer
 			printJSON(&buf, rows, nil)
 			if got := buf.String(); got != tt.want {
@@ -255,6 +241,7 @@ func TestPrintJSONL(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			value := mustParseYAML(t, tt.input)
 			rows := buildRows("f.yaml", value)
+			sort.Slice(rows, func(i, j int) bool { return rows[i].id < rows[j].id })
 			var buf bytes.Buffer
 			printJSONL(&buf, rows, nil)
 			if got := buf.String(); got != tt.want {

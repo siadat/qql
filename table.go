@@ -21,16 +21,10 @@ func buildRows(path string, value any) []row {
 		return []row{{id: path, cols: cols}}
 	}
 
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	rows := make([]row, 0, len(keys))
-	for _, k := range keys {
+	rows := make([]row, 0, len(m))
+	for k, v := range m {
 		cols := map[string]any{}
-		flatten(m[k], "", cols)
+		flatten(v, "", cols)
 		rows = append(rows, row{id: k, cols: cols})
 	}
 	return rows
