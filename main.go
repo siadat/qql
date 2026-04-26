@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/siadat/qql/parser"
 	"github.com/siadat/qql/providers"
@@ -26,14 +27,15 @@ func main() {
 	var pred parser.WhereExpr
 	var sqlSource string
 	var orderBy []parser.OrderTerm
-	var prefix string
+	var with parser.WithOptions
+	var whereRaw string
 	if *sqlFlag != "" {
-		s, src, p, ob, rp, err := parser.ParseSQL(*sqlFlag)
+		s, src, p, ob, w, wr, err := parser.ParseSQL(*sqlFlag)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)
 		}
-		selected, sqlSource, pred, orderBy, prefix = s, src, p, ob, rp
+		selected, sqlSource, pred, orderBy, with, whereRaw = s, src, p, ob, w, wr
 	}
 
 	var paths []string
@@ -41,19 +43,48 @@ func main() {
 		paths = append(paths, sqlSource)
 	}
 	paths = append(paths, flag.Args()...)
-	if len(paths) == 0 {
-		flag.Usage()
-		os.Exit(2)
-	}
 
 	var rows []row
-	for _, path := range paths {
-		pathRows, err := providers.Load(path, prefix)
+	if strings.HasPrefix(with.Provider, "external:") {
+		// External providers run once per query and receive every path via
+		// ctx.Files; the script decides how to interleave them.
+		ctx := providers.Context{
+			Source:   sqlSource,
+			Files:    paths,
+			Prefix:   with.Prefix,
+			Provider: with.Provider,
+			Select:   selected,
+			Where:    whereRaw,
+			OrderBy:  toProviderOrderBy(orderBy),
+		}
+		var err error
+		rows, err = providers.Load(ctx)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-		rows = append(rows, pathRows...)
+	} else {
+		if len(paths) == 0 {
+			flag.Usage()
+			os.Exit(2)
+		}
+		for _, path := range paths {
+			ctx := providers.Context{
+				Source:   path,
+				Files:    paths,
+				Prefix:   with.Prefix,
+				Provider: with.Provider,
+				Select:   selected,
+				Where:    whereRaw,
+				OrderBy:  toProviderOrderBy(orderBy),
+			}
+			pathRows, err := providers.Load(ctx)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			rows = append(rows, pathRows...)
+		}
 	}
 
 	if pred != nil {
@@ -92,4 +123,15 @@ func main() {
 		fmt.Fprintf(os.Stderr, "unknown output format %q (want table, json, or jsonl)\n", outFlag)
 		os.Exit(2)
 	}
+}
+
+func toProviderOrderBy(in []parser.OrderTerm) []providers.OrderTerm {
+	if in == nil {
+		return nil
+	}
+	out := make([]providers.OrderTerm, len(in))
+	for i, t := range in {
+		out[i] = providers.OrderTerm{Col: t.Col, Desc: t.Desc}
+	}
+	return out
 }

@@ -209,10 +209,24 @@ type OrderTerm struct {
 	Desc bool
 }
 
-func ParseSQL(src string) (selected []string, source string, pred WhereExpr, orderBy []OrderTerm, prefix string, err error) {
+// WithOptions holds the configuration knobs parsed from a trailing WITH clause.
+// All fields are optional; an empty value means the user did not set that key.
+type WithOptions struct {
+	Prefix   string
+	Provider string
+}
+
+// ParseSQL parses a qql query and returns the parsed pieces.
+//
+// whereRaw is the original substring of `src` covering the WHERE expression
+// (between WHERE and the next clause), trimmed of trailing whitespace. It is
+// empty when there is no WHERE clause. External providers receive this as a
+// hint so they can choose to filter at the source; qql still re-applies the
+// parsed `pred` to whatever rows the provider returns.
+func ParseSQL(src string) (selected []string, source string, pred WhereExpr, orderBy []OrderTerm, with WithOptions, whereRaw string, err error) {
 	toks, err := tokenize(src)
 	if err != nil {
-		return nil, "", nil, nil, "", err
+		return nil, "", nil, nil, WithOptions{}, "", err
 	}
 	p := &parseState{toks: toks}
 
@@ -220,7 +234,7 @@ func ParseSQL(src string) (selected []string, source string, pred WhereExpr, ord
 		p.advance()
 		selected, err = parseSelectList(p)
 		if err != nil {
-			return nil, "", nil, nil, "", err
+			return nil, "", nil, nil, WithOptions{}, "", err
 		}
 	}
 
@@ -228,7 +242,7 @@ func ParseSQL(src string) (selected []string, source string, pred WhereExpr, ord
 		p.advance()
 		t := p.peek()
 		if t.kind != tokSource {
-			return nil, "", nil, nil, "", fmt.Errorf("expected source after FROM at offset %d, got %q", t.pos, t.text)
+			return nil, "", nil, nil, WithOptions{}, "", fmt.Errorf("expected source after FROM at offset %d, got %q", t.pos, t.text)
 		}
 		p.advance()
 		source = t.text
@@ -236,74 +250,79 @@ func ParseSQL(src string) (selected []string, source string, pred WhereExpr, ord
 
 	if p.peek().kind == tokWhere {
 		p.advance()
+		whereStart := p.peek().pos
 		pred, err = p.parseOr()
 		if err != nil {
-			return nil, "", nil, nil, "", err
+			return nil, "", nil, nil, WithOptions{}, "", err
 		}
+		whereRaw = strings.TrimRight(src[whereStart:p.peek().pos], " \t\n\r")
 	}
 
 	if p.peek().kind == tokOrder {
 		p.advance()
 		t := p.advance()
 		if t.kind != tokBy {
-			return nil, "", nil, nil, "", fmt.Errorf("expected BY after ORDER at offset %d, got %q", t.pos, t.text)
+			return nil, "", nil, nil, WithOptions{}, "", fmt.Errorf("expected BY after ORDER at offset %d, got %q", t.pos, t.text)
 		}
 		orderBy, err = parseOrderBy(p)
 		if err != nil {
-			return nil, "", nil, nil, "", err
+			return nil, "", nil, nil, WithOptions{}, "", err
 		}
 	}
 
 	if p.peek().kind == tokWith {
 		p.advance()
-		prefix, err = parseWith(p)
+		with, err = parseWith(p)
 		if err != nil {
-			return nil, "", nil, nil, "", err
+			return nil, "", nil, nil, WithOptions{}, "", err
 		}
 	}
 
 	if t := p.peek(); t.kind != tokEOF {
-		return nil, "", nil, nil, "", fmt.Errorf("unexpected token %q at offset %d", t.text, t.pos)
+		return nil, "", nil, nil, WithOptions{}, "", fmt.Errorf("unexpected token %q at offset %d", t.text, t.pos)
 	}
-	return selected, source, pred, orderBy, prefix, nil
+	return selected, source, pred, orderBy, with, whereRaw, nil
 }
 
 // parseWith reads a comma-separated list of `key = string` pairs after the
-// WITH keyword. Only `prefix` is recognized today; other keys error. Returns
-// the value bound to `prefix`, or "" if the clause is empty (which is treated
-// by callers as "no path specified" — equivalent to the default top-level row
-// layout).
-func parseWith(p *parseState) (prefix string, err error) {
-	seenPrefix := false
+// WITH keyword. Recognized keys: `prefix` (path glob for nested rows) and
+// `provider` (e.g. `external:./script.py` for user-supplied row sources).
+// Unknown or duplicate keys error. Empty fields in the returned WithOptions
+// mean the user did not set that key.
+func parseWith(p *parseState) (opts WithOptions, err error) {
+	seen := map[string]bool{}
 	for {
 		k := p.advance()
 		if k.kind != tokIdent {
-			return "", fmt.Errorf("expected key in WITH at offset %d, got %q", k.pos, k.text)
+			return WithOptions{}, fmt.Errorf("expected key in WITH at offset %d, got %q", k.pos, k.text)
 		}
 		eq := p.advance()
 		if eq.kind != tokEq {
-			return "", fmt.Errorf("expected '=' after WITH key at offset %d, got %q", eq.pos, eq.text)
+			return WithOptions{}, fmt.Errorf("expected '=' after WITH key at offset %d, got %q", eq.pos, eq.text)
 		}
 		v := p.advance()
 		if v.kind != tokString {
-			return "", fmt.Errorf("expected string value in WITH at offset %d, got %q", v.pos, v.text)
+			return WithOptions{}, fmt.Errorf("expected string value in WITH at offset %d, got %q", v.pos, v.text)
 		}
-		switch strings.ToLower(k.text) {
+		key := strings.ToLower(k.text)
+		if seen[key] {
+			return WithOptions{}, fmt.Errorf("duplicate WITH key %q at offset %d", k.text, k.pos)
+		}
+		switch key {
 		case "prefix":
-			if seenPrefix {
-				return "", fmt.Errorf("duplicate WITH key %q at offset %d", k.text, k.pos)
-			}
-			prefix = v.text
-			seenPrefix = true
+			opts.Prefix = v.text
+		case "provider":
+			opts.Provider = v.text
 		default:
-			return "", fmt.Errorf("unknown WITH key %q at offset %d", k.text, k.pos)
+			return WithOptions{}, fmt.Errorf("unknown WITH key %q at offset %d", k.text, k.pos)
 		}
+		seen[key] = true
 		if p.peek().kind != tokComma {
 			break
 		}
 		p.advance()
 	}
-	return prefix, nil
+	return opts, nil
 }
 
 func parseOrderBy(p *parseState) ([]OrderTerm, error) {

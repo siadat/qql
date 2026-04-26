@@ -70,3 +70,39 @@ region-c.servers.web1    region-c       16   64
 region-a.servers.web1    region-a       8    32
 region-b.servers.cache1  region-b       4    16
 ```
+
+## External providers
+
+You can plug in any executable as a row source with `WITH provider = 'external:<path>'`. qql execs the script once per query, hands it a JSON request on stdin, and reads JSONL rows from stdout. WHERE/ORDER BY are re-applied by qql, so the script is free to ignore them — the script doesn't need to understand qql's predicate grammar to participate.
+
+The bundled `examples/providers/fs.py` walks directories and emits one row per file:
+
+```
+$ qql --sql "SELECT key, name, size WHERE size > 100 ORDER BY size DESC WITH provider = 'external:./examples/providers/fs.py'" testdata
+key                    name          size
+---------------------  ------------  ----
+testdata/regions.yaml  regions.yaml  311
+testdata/servers.yaml  servers.yaml  242
+```
+
+### Wire protocol
+
+- **stdin** — one JSON object, then EOF:
+  ```json
+  {
+    "version": 1,
+    "source": "regions.yaml",
+    "files": ["regions.yaml"],
+    "prefix": "*.servers.*",
+    "select": ["key", "cpu"],
+    "where": "status = 'up' AND cpu >= 16",
+    "order_by": [{"col": "cpu", "desc": true}]
+  }
+  ```
+  Every field after `version` is a hint. `where` is the **raw SQL substring** of the WHERE clause; the script can grep it, ignore it, or reparse it. qql always re-applies the parsed predicate to whatever rows the script returns.
+
+- **stdout** — JSONL. One JSON object per line. Empty lines and `#`-prefixed comment lines are skipped. Malformed lines are logged to stderr and dropped.
+
+- **stderr** — passes through to your terminal verbatim, so progress logs and error messages from the script surface naturally.
+
+- **exit code** — non-zero aborts the query; qql discards stdout and surfaces the error.
