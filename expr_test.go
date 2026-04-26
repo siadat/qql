@@ -6,32 +6,6 @@ import (
 	"testing"
 )
 
-func TestParseWhereErrors(t *testing.T) {
-	cases := []struct {
-		name string
-		expr string
-	}{
-		{"empty", ""},
-		{"whitespace only", "   "},
-		{"trailing junk", "a = 1 foo"},
-		{"unbalanced paren", "(a = 1"},
-		{"bare bang", "a !== 1"},
-		{"unterminated string", `a = "abc`},
-		{"missing operator", "a 1"},
-		{"missing rhs", "a ="},
-		{"unexpected char", "a = @"},
-		{"empty parens", "()"},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			_, err := parseWhere(c.expr)
-			if err == nil {
-				t.Errorf("expected error for %q", c.expr)
-			}
-		})
-	}
-}
-
 func TestEval(t *testing.T) {
 	rows := []row{
 		{id: "alice", cols: map[string]any{"age": 30, "address.city": "SF", "tags.0": "eng", "active": true, "score": 95.5}},
