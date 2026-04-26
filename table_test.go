@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"reflect"
 	"strings"
 	"testing"
@@ -166,6 +167,98 @@ func TestBuildRows(t *testing.T) {
 			got := buildRows(tt.path, value)
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("buildRows(%q, %#v) =\n got:  %#v\n want: %#v", tt.path, value, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPrintJSON(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name: "rows with mixed types",
+			input: `
+				alice:
+				  age: 30
+				  city: SF
+				bob:
+				  age: 25
+				  active: false
+			`,
+			want: `[
+  {
+    "active": null,
+    "age": 30,
+    "city": "SF",
+    "id": "alice"
+  },
+  {
+    "active": false,
+    "age": 25,
+    "city": null,
+    "id": "bob"
+  }
+]
+`,
+		},
+		{
+			name:  "empty rows",
+			input: `{}`,
+			want:  "[]\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			value := mustParseYAML(t, tt.input)
+			rows := buildRows("f.yaml", value)
+			var buf bytes.Buffer
+			printJSON(&buf, rows, nil)
+			if got := buf.String(); got != tt.want {
+				t.Errorf("printJSON =\n%q\nwant:\n%q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPrintJSONL(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name: "rows with mixed types",
+			input: `
+				alice:
+				  age: 30
+				  city: SF
+				bob:
+				  age: 25
+				  active: false
+			`,
+			want: `{"active":null,"age":30,"city":"SF","id":"alice"}
+{"active":false,"age":25,"city":null,"id":"bob"}
+`,
+		},
+		{
+			name:  "empty rows",
+			input: `{}`,
+			want:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			value := mustParseYAML(t, tt.input)
+			rows := buildRows("f.yaml", value)
+			var buf bytes.Buffer
+			printJSONL(&buf, rows, nil)
+			if got := buf.String(); got != tt.want {
+				t.Errorf("printJSONL =\n%q\nwant:\n%q", got, tt.want)
 			}
 		})
 	}

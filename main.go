@@ -8,8 +8,11 @@ import (
 
 func main() {
 	sqlFlag := flag.String("sql", "", `SQL-like query, e.g. "SELECT col1, col2 WHERE col3 > 5"`)
+	var outFlag string
+	flag.StringVar(&outFlag, "out", "table", "output format: table, json, jsonl")
+	flag.StringVar(&outFlag, "o", "table", "output format (shorthand for --out)")
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "usage: %s [--sql QUERY] <file> [file ...]\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "usage: %s [--sql QUERY] [-o FORMAT] <file> [file ...]\n", os.Args[0])
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -51,5 +54,15 @@ func main() {
 		rows = filtered
 	}
 
-	printTable(os.Stdout, rows, selected)
+	switch outFlag {
+	case "table":
+		printTable(os.Stdout, rows, selected)
+	case "json":
+		printJSON(os.Stdout, rows, selected)
+	case "jsonl":
+		printJSONL(os.Stdout, rows, selected)
+	default:
+		fmt.Fprintf(os.Stderr, "unknown output format %q (want table, json, or jsonl)\n", outFlag)
+		os.Exit(2)
+	}
 }
