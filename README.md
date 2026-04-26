@@ -2,38 +2,53 @@
 
 [![test](https://github.com/siadat/qql/actions/workflows/test.yml/badge.svg)](https://github.com/siadat/qql/actions/workflows/test.yml)
 
-qql is a lightweight and extendable command-line data processor akin to `jq` for working with YAML and other data sources.
+qql is a lightweight, extendable command-line data processor for YAML, JSON, git history, and user-supplied scripts. It exposes a SQL-like surface for selecting, filtering, sorting, and counting rows.
 
 ## Install
 
-```
-go install github.com/siadat/qql@latest
-```
+Run `go install github.com/siadat/qql@latest`.
 
-## Example
+## Invocation
 
-Given `testdata/servers.yaml` (included in the repo):
+`qql [--sql QUERY] [-o FORMAT] [--no-header] <file> [file ...]`. Output formats are `table` (default), `json`, and `jsonl`. Sources are dispatched by extension — `.json` and `.yaml`/`.yml` use built-in providers — or by source-prefix `git:<repo>` for git log rows.
 
-```yaml
-web1: {cpu: 8, ram: 32, status: up, role: web}
-web2: {cpu: 8, ram: 32, status: down, role: web}
-web3: {cpu: 16, ram: 64, status: up, role: web}
-db1: {cpu: 32, ram: 128, status: up, role: db}
-cache1: {cpu: 4, ram: 16, status: up, role: cache}
-```
+## Query syntax
 
-Run:
+A query is a sequence of clauses written in this fixed order; every clause is optional:
 
-```
-$ qql --sql "SELECT key, cpu, ram WHERE status = 'up' AND cpu >= 16" testdata/servers.yaml
-```
-Output:
-```
-key   cpu  ram
-----  ---  ---
-web3  16   64
-db1   32   128
-```
+- `SELECT <projection>`
+- `FROM <source>`
+- `WHERE <predicate>`
+- `ORDER BY <terms>`
+- `LIMIT <N>`
+- `OFFSET <M>`
+- `WITH <key> = '<value>' [, ...]`
+
+Keywords are case-insensitive. String literals use single or double quotes (no escapes — bytes are taken verbatim, which keeps regex and path-glob values readable). Numbers may be integer or floating-point. The keywords `true`, `false`, and `null` carry their usual meaning.
+
+### SELECT
+
+`SELECT *` keeps every column. A comma-separated list of identifiers projects exactly those columns; identifiers may contain dot paths like `address.city` or `tags.0`. `SELECT COUNT(*)` collapses the post-WHERE result to a single row with one `count` column and cannot be combined with regular projections (see "Counting rows").
+
+### FROM
+
+A path to a YAML/JSON file, or `git:<repo>` for git log rows. When absent, positional CLI arguments supply the sources; when present, the FROM source becomes the first positional path and CLI arguments are appended.
+
+### WHERE
+
+A boolean expression over column references and literals. Comparison operators are `=`, `!=`, `<`, `<=`, `>`, `>=`. The pattern operator `MATCHES '<regex>'` runs a Go regular expression against the value (see "Pattern matching"). Logical connectives are `AND`, `OR`, `NOT`, with parentheses for grouping. Type mismatches between operands evaluate to false; only `= null` / `!= null` are useful — relational comparisons against `null` yield false.
+
+### ORDER BY
+
+One or more `<column> [ASC|DESC]` terms separated by commas; `ASC` is the default. The sort is stable, and types compare as `null < bool < number < string` so heterogeneous values still produce a deterministic order.
+
+### LIMIT and OFFSET
+
+`LIMIT N` caps the number of rows after ORDER BY; `OFFSET M` skips the first M; the two combine as `LIMIT N OFFSET M` for top-N pagination. Both N and M are non-negative integers; `LIMIT 0` is valid and returns zero rows (see "Limit and offset").
+
+### WITH
+
+Trailing configuration. Recognized keys today are `prefix = '<glob>'` (extract rows from a nested path — see "Nested rows") and `provider = 'external:<script>'` (replace built-in dispatch with a user-supplied script — see "External providers").
 
 ## Counting rows
 
