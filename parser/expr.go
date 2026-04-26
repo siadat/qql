@@ -2,6 +2,8 @@ package parser
 
 import (
 	"encoding/json"
+	"fmt"
+	"regexp"
 )
 
 type row = map[string]any
@@ -58,6 +60,26 @@ func (o *boolLit) resolve(r row) any { return o.v }
 type nullLit struct{}
 
 func (o *nullLit) resolve(r row) any { return nil }
+
+type matchesExpr struct {
+	left operand
+	re   *regexp.Regexp
+}
+
+// Eval coerces non-string values via fmt.Sprint so MATCHES is useful on
+// numbers/bools too (e.g. `size MATCHES '^4\d+$'`). nil short-circuits to false
+// rather than matching against the literal "<nil>".
+func (e *matchesExpr) Eval(r row) bool {
+	v := e.left.resolve(r)
+	if v == nil {
+		return false
+	}
+	s, ok := v.(string)
+	if !ok {
+		s = fmt.Sprint(v)
+	}
+	return e.re.MatchString(s)
+}
 
 type cmpExpr struct {
 	op          cmpOp

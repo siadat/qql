@@ -35,6 +35,21 @@ web3  16   64
 db1   32   128
 ```
 
+## Pattern matching
+
+The `MATCHES` operator runs a Go regular expression against the left-hand value:
+
+```
+$ qql --sql "SELECT key, cpu WHERE key MATCHES '^web'" testdata/servers.yaml
+key   cpu
+----  ---
+web1  8
+web2  8
+web3  16
+```
+
+Patterns are not anchored — use `^` and `$` for full matches. Combine with `NOT` to invert, e.g. `WHERE NOT key MATCHES '^web'`. Non-string values are coerced to their textual form, so `size MATCHES '^4\d+$'` works on numbers too. Invalid regexes fail at parse time.
+
 ## Nested rows
 
 When the rows of interest live deeper than the top level, point at them with `WITH prefix = '<path>'`. Each `*` segment in the path captures the matched key as a column. The rightmost `*` becomes `key` and shows the **full path from the root** through that row (so `*.servers` against the file below yields `key = "region-a.servers"`); earlier `*`s become `key_capture_1`, `key_capture_2`, … and show just the matched key for filtering convenience.

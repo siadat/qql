@@ -66,6 +66,16 @@ func TestEval(t *testing.T) {
 		{"null = 5", "null = 5", nil},
 		{"null != 5", "null != 5", []string{"alice", "bob", "carol"}},
 		{"null < 5", "null < 5", nil},
+
+		{"matches simple", `key MATCHES 'ali'`, []string{"alice"}},
+		{"matches anchored", `key MATCHES '^a'`, []string{"alice"}},
+		{"matches escaped dot", `address.city MATCHES '^N.*'`, []string{"bob"}},
+		{"matches lowercase keyword", `key matches 'b.b'`, []string{"bob"}},
+		{"matches no result", `key MATCHES 'zzz'`, nil},
+		{"matches on number coerced", `age MATCHES '^4'`, []string{"carol"}},
+		{"matches on missing col", `tags.0 MATCHES '.*'`, []string{"alice"}},
+		{"NOT matches", `NOT key MATCHES '^a'`, []string{"bob", "carol"}},
+		{"matches AND eq", `key MATCHES '^[ab]' AND active = true`, []string{"alice"}},
 	}
 
 	for _, c := range cases {

@@ -143,6 +143,10 @@ func TestParseSQLErrors(t *testing.T) {
 		{"with trailing comma", "WITH prefix = 'x',"},
 		{"with before select", "WITH prefix = 'x' SELECT a"},
 		{"with before order by", "WITH prefix = 'x' ORDER BY a"},
+		{"matches non-string rhs", "WHERE x MATCHES 5"},
+		{"matches null rhs", "WHERE x MATCHES null"},
+		{"matches invalid regex", "WHERE x MATCHES '['"},
+		{"matches without rhs", "WHERE x MATCHES"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

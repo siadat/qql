@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -25,6 +26,7 @@ const (
 	tokLte
 	tokGt
 	tokGte
+	tokMatches
 	tokLParen
 	tokRParen
 	tokSelect
@@ -107,6 +109,8 @@ func tokenize(src string) ([]token, error) {
 				kind = tokDesc
 			case "with":
 				kind = tokWith
+			case "matches":
+				kind = tokMatches
 			}
 			toks = append(toks, token{kind, text, start})
 		case isDigit(c):
@@ -454,6 +458,18 @@ func (p *parseState) parseComparison() (WhereExpr, error) {
 	left, err := p.parseOperand()
 	if err != nil {
 		return nil, err
+	}
+	if p.peek().kind == tokMatches {
+		p.advance()
+		pat := p.advance()
+		if pat.kind != tokString {
+			return nil, fmt.Errorf("expected string regex after MATCHES at offset %d, got %q", pat.pos, pat.text)
+		}
+		re, err := regexp.Compile(pat.text)
+		if err != nil {
+			return nil, fmt.Errorf("invalid regex %q at offset %d: %v", pat.text, pat.pos, err)
+		}
+		return &matchesExpr{left: left, re: re}, nil
 	}
 	t := p.peek()
 	var op cmpOp
