@@ -1,4 +1,4 @@
-module github.com/siadat/jsonsql
+module github.com/siadat/qql
 
 go 1.26.2
 
