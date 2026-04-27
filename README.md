@@ -62,7 +62,7 @@ A path to a YAML or JSON file. When absent, positional CLI arguments supply the 
 - A boolean expression over column references and literals. Comparison operators are `=`, `!=`, `<`, `<=`, `>`, `>=`.
 - The pattern operator `MATCHES '<regex>'` runs a Go regular expression against the value.
 - Logical connectives are `AND`, `OR`, `NOT`, with parentheses for grouping.
-- Type mismatches between operands evaluate to false; only `= null` / `!= null` are useful: relational comparisons against `null` yield false.
+- Type mismatches between operands evaluate to false, except with `= null` and `!= null`.
 
 ### ORDER BY
 
