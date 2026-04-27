@@ -72,7 +72,7 @@ func loadExternal(scriptPath string, ctx Context) ([]map[string]any, error) {
 		return nil, fmt.Errorf("external %s: start: %w", scriptPath, err)
 	}
 
-	rows, scanErr := readExternalRows(stdout)
+	rows, scanErr := readExternalRows(stdout, ctx.Prefix)
 
 	if waitErr := cmd.Wait(); waitErr != nil {
 		return nil, fmt.Errorf("external %s exited with error: %w", scriptPath, waitErr)
@@ -83,7 +83,17 @@ func loadExternal(scriptPath string, ctx Context) ([]map[string]any, error) {
 	return rows, nil
 }
 
-func readExternalRows(r io.Reader) ([]map[string]any, error) {
+// readExternalRows decodes the JSONL stream from a script's stdout. Each
+// non-blank, non-`#` line must be an envelope of the form
+// {"type": "row"|"tree", "value": ...}:
+//
+//   - "row" passes value through as a single row.
+//   - "tree" feeds value to rowsFromTree(value, prefix), expanding it the
+//     same way the built-in YAML/JSON loaders do.
+//
+// Lines that don't match either shape are logged to stderr and skipped, so
+// one bad line can't take down the whole query.
+func readExternalRows(r io.Reader, prefix string) ([]map[string]any, error) {
 	var rows []map[string]any
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 64*1024), 8*1024*1024)
@@ -94,12 +104,33 @@ func readExternalRows(r io.Reader) ([]map[string]any, error) {
 		}
 		dec := json.NewDecoder(strings.NewReader(line))
 		dec.UseNumber()
-		var row map[string]any
-		if err := dec.Decode(&row); err != nil {
-			fmt.Fprintf(os.Stderr, "qql: skipping malformed external row %q: %v\n", line, err)
+		var env map[string]any
+		if err := dec.Decode(&env); err != nil {
+			fmt.Fprintf(os.Stderr, "qql: skipping malformed external line %q: %v\n", line, err)
 			continue
 		}
-		rows = append(rows, row)
+		kind, _ := env["type"].(string)
+		value, hasValue := env["value"]
+		if !hasValue || (kind != "row" && kind != "tree") {
+			fmt.Fprintf(os.Stderr, "qql: skipping external line %q: expected {\"type\":\"row\"|\"tree\",\"value\":...}\n", line)
+			continue
+		}
+		switch kind {
+		case "row":
+			row, ok := value.(map[string]any)
+			if !ok {
+				fmt.Fprintf(os.Stderr, "qql: skipping external row line %q: value must be an object\n", line)
+				continue
+			}
+			rows = append(rows, row)
+		case "tree":
+			expanded, err := rowsFromTree(value, prefix)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "qql: skipping external tree line %q: %v\n", line, err)
+				continue
+			}
+			rows = append(rows, expanded...)
+		}
 	}
 	return rows, scanner.Err()
 }

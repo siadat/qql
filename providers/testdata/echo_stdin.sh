@@ -5,11 +5,11 @@
 exec python3 -c '
 import json, sys
 ctx = json.load(sys.stdin)
-print(json.dumps({
+print(json.dumps({"type": "row", "value": {
     "key": "stdin",
     "version": ctx.get("version"),
     "source": ctx.get("source", ""),
     "prefix": ctx.get("prefix", ""),
     "where": ctx.get("where", ""),
-}))
+}}))
 '

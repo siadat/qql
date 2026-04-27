@@ -7,7 +7,8 @@ import (
 	"strings"
 )
 
-// buildRows turns a decoded value (e.g. from JSON) into rows.
+// rowsFromTree turns a nested tree (e.g. a decoded JSON or YAML value) into
+// flat rows by walking it under a dot-glob prefix.
 //
 // prefix is a dot-separated glob: "*" matches any map key (and captures it
 // as a column), literal segments descend into that key without capturing.
@@ -20,7 +21,7 @@ import (
 //
 // Branches that don't match (non-map where the path expects one, or missing
 // key) are silently skipped — there's no schema, so partial matches are normal.
-func buildRows(value any, prefix string) ([]map[string]any, error) {
+func rowsFromTree(tree any, prefix string) ([]map[string]any, error) {
 	if prefix == "" {
 		prefix = "*"
 	}
@@ -31,13 +32,13 @@ func buildRows(value any, prefix string) ([]map[string]any, error) {
 		}
 	}
 	// Back-compat for the default path: a non-map root becomes a single row of
-	// flattened columns instead of producing zero rows. Pre-WITH `buildRows(v)`
-	// did this, and CLI invocations that don't pass WITH should keep behaving
-	// the same way against array-rooted JSON.
+	// flattened columns instead of producing zero rows. Pre-WITH callers did
+	// this, and CLI invocations that don't pass WITH should keep behaving the
+	// same way against array-rooted JSON.
 	if len(segs) == 1 && segs[0] == "*" {
-		if _, isMap := value.(map[string]any); !isMap {
+		if _, isMap := tree.(map[string]any); !isMap {
 			row := map[string]any{}
-			flatten(value, "", row)
+			flatten(tree, "", row)
 			return []map[string]any{row}, nil
 		}
 	}
@@ -46,7 +47,7 @@ func buildRows(value any, prefix string) ([]map[string]any, error) {
 	matches := make([]string, len(segs))
 
 	var rows []map[string]any
-	walkRows(value, segs, names, rightmost, 0, matches, &rows)
+	walkRows(tree, segs, names, rightmost, 0, matches, &rows)
 	return rows, nil
 }
 

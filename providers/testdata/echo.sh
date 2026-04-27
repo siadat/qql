@@ -4,8 +4,8 @@
 # parsing path.
 cat >/dev/null
 echo "echo.sh: starting" >&2
-echo '{"key": "alpha", "n": 1, "ok": true}'
+echo '{"type": "row", "value": {"key": "alpha", "n": 1, "ok": true}}'
 echo ''
 echo '# this is a comment, must be skipped'
-echo '{"key": "beta", "n": 2.5, "ok": false}'
+echo '{"type": "row", "value": {"key": "beta", "n": 2.5, "ok": false}}'
 echo "echo.sh: done" >&2

@@ -102,19 +102,79 @@ func TestLoadExternalPayloadDelivered(t *testing.T) {
 func TestReadExternalRowsSkipsBlankAndComment(t *testing.T) {
 	in := strings.NewReader(`
 # leading comment
-{"a": 1}
+{"type": "row", "value": {"a": 1}}
 
 
 # another comment
-{"b": 2}
+{"type": "row", "value": {"b": 2}}
 `)
-	rows, err := readExternalRows(in)
+	rows, err := readExternalRows(in, "")
 	if err != nil {
 		t.Fatalf("readExternalRows: %v", err)
 	}
 	want := []map[string]any{
 		{"a": json.Number("1")},
 		{"b": json.Number("2")},
+	}
+	if !reflect.DeepEqual(rows, want) {
+		t.Errorf("got %+v, want %+v", rows, want)
+	}
+}
+
+func TestReadExternalRowsTreeExpands(t *testing.T) {
+	in := strings.NewReader(`
+{"type": "tree", "value": {"region-a": {"servers": {"web1": {"cpu": 8}, "db1": {"cpu": 32}}}}}
+{"type": "tree", "value": {"region-b": {"servers": {"web1": {"cpu": 4}}}}}
+`)
+	rows, err := readExternalRows(in, "*.servers.*")
+	if err != nil {
+		t.Fatalf("readExternalRows: %v", err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("got %d rows, want 3: %+v", len(rows), rows)
+	}
+	keys := make(map[string]json.Number)
+	for _, r := range rows {
+		k, _ := r["key"].(string)
+		cpu, _ := r["cpu"].(json.Number)
+		keys[k] = cpu
+	}
+	want := map[string]json.Number{
+		"region-a.servers.web1": json.Number("8"),
+		"region-a.servers.db1":  json.Number("32"),
+		"region-b.servers.web1": json.Number("4"),
+	}
+	if !reflect.DeepEqual(keys, want) {
+		t.Errorf("got %+v, want %+v", keys, want)
+	}
+}
+
+func TestReadExternalRowsRejectsBareRow(t *testing.T) {
+	in := strings.NewReader(`{"key": "alice"}` + "\n")
+	rows, err := readExternalRows(in, "")
+	if err != nil {
+		t.Fatalf("readExternalRows: %v", err)
+	}
+	if rows != nil {
+		t.Errorf("got %+v, want nil (bare object without envelope must be skipped)", rows)
+	}
+}
+
+func TestReadExternalRowsMixedRowAndTree(t *testing.T) {
+	in := strings.NewReader(`
+{"type": "row", "value": {"key": "passthrough", "n": 1}}
+{"type": "tree", "value": {"alice": {"age": 30}}}
+`)
+	rows, err := readExternalRows(in, "*")
+	if err != nil {
+		t.Fatalf("readExternalRows: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("got %d rows, want 2: %+v", len(rows), rows)
+	}
+	want := []map[string]any{
+		{"key": "passthrough", "n": json.Number("1")},
+		{"key": "alice", "age": json.Number("30")},
 	}
 	if !reflect.DeepEqual(rows, want) {
 		t.Errorf("got %+v, want %+v", rows, want)

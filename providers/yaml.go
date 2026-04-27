@@ -19,5 +19,5 @@ func loadYAML(path, prefix string) ([]map[string]any, error) {
 	if err := dec.Decode(&v); err != nil {
 		return nil, fmt.Errorf("decode %s: %w", path, err)
 	}
-	return buildRows(v, prefix)
+	return rowsFromTree(v, prefix)
 }

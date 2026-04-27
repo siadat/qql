@@ -2,8 +2,9 @@
 """Reference qql external provider: walks directories and emits one row per file.
 
 Wire protocol (see README): qql sends a single JSON object on stdin and reads
-JSONL rows on stdout. Stderr passes through to the user. Hints (where, order_by,
-select, prefix) are optional — qql re-applies them to whatever rows we emit.
+JSONL envelopes on stdout, each shaped {"type": "row"|"tree", "value": ...}.
+Stderr passes through to the user. Hints (where, order_by, select, prefix) are
+optional — qql re-applies them to whatever rows we emit.
 """
 
 import json
@@ -31,14 +32,14 @@ def emit_file(path: str) -> None:
     except OSError as e:
         print(f"fs.py: stat {path}: {e}", file=sys.stderr)
         return
-    print(json.dumps({
+    print(json.dumps({"type": "row", "value": {
         "key": path,
         "name": os.path.basename(path),
         "path": os.path.dirname(path),
         "size": st.st_size,
         "mtime": int(st.st_mtime),
         "is_dir": False,
-    }))
+    }}))
 
 
 if __name__ == "__main__":

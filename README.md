@@ -82,7 +82,7 @@ Trailing configuration as a comma-separated list of `<key> = '<value>'` pairs. R
 
 ## External providers
 
-You can plug in any executable as a row source with `WITH provider = 'external:<path>'`. qql execs the script once per query, hands it a JSON request on stdin, and reads JSONL rows from stdout. WHERE/ORDER BY are re-applied by qql, so the script is free to ignore them: the script doesn't need to understand qql's predicate grammar to participate.
+You can plug in any executable as a row source with `WITH provider = 'external:<path>'`. qql execs the script once per query, hands it a JSON request on stdin, and reads JSONL envelopes from stdout. WHERE/ORDER BY are re-applied by qql, so the script is free to ignore them: the script doesn't need to understand qql's predicate grammar to participate.
 
 The bundled `examples/providers/fs.py` walks directories and emits one row per file:
 
@@ -91,6 +91,14 @@ $ qql --sql "SELECT key, name, size
              WHERE size > 100
              ORDER BY size DESC
              WITH provider = 'external:./examples/providers/fs.py'" ./testdata/
+```
+
+The bundled `examples/providers/yaml_file_reader.py` reads YAML files and emits each document as a `tree`; qql unfolds it with the same dot-glob prefix used by built-in YAML/JSON loaders:
+
+```
+$ qql --sql "SELECT key, cpu
+             WITH provider = 'external:./examples/providers/yaml_file_reader.py',
+                  prefix = '*.servers.*'" testdata/regions.yaml
 ```
 
 ### Protocol
@@ -109,7 +117,11 @@ $ qql --sql "SELECT key, name, size
   ```
   Every field after `version` is a hint. `where` is the **raw SQL substring** of the WHERE clause; the script can grep it, ignore it, or reparse it. qql always re-applies the parsed predicate to whatever rows the script returns.
 
-- **stdout**: JSONL. One JSON object per line. Empty lines and `#`-prefixed comment lines are skipped. Malformed lines are logged to stderr and dropped.
+- **stdout**: JSONL. One envelope per line of the form `{"type": "row" | "tree", "value": ...}`:
+  - `"type": "row"` — `value` is a flat object whose keys are columns; qql appends it to the result set unchanged.
+  - `"type": "tree"` — `value` is a nested document (map/list/scalar); qql unfolds it via the WITH `prefix` glob the same way it would a YAML or JSON file.
+
+  Empty lines and `#`-prefixed comment lines are skipped. Lines that aren't valid envelopes are logged to stderr and dropped.
 
 - **stderr**: passes through to your terminal verbatim, so progress logs and error messages from the script surface naturally.
 

@@ -236,15 +236,15 @@ func TestBuildRows(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			value := mustParseYAML(t, tt.input)
-			got, err := buildRows(value, tt.prefix)
+			got, err := rowsFromTree(value, tt.prefix)
 			if err != nil {
-				t.Fatalf("buildRows: %v", err)
+				t.Fatalf("rowsFromTree: %v", err)
 			}
 			sort.Slice(got, func(i, j int) bool {
 				return rowKey(got[i]) < rowKey(got[j])
 			})
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("buildRows(%#v, %q) =\n got:  %#v\n want: %#v", value, tt.prefix, got, tt.want)
+				t.Errorf("rowsFromTree(%#v, %q) =\n got:  %#v\n want: %#v", value, tt.prefix, got, tt.want)
 			}
 		})
 	}
