@@ -180,7 +180,7 @@ func printTableWithSummary(w io.Writer, rows []row, selected []string, header bo
 			"Value":     constValues[c],
 		})
 	}
-	printTable(w, summaryRows, []string{"Frequency", "Column", "Value"}, header)
+	printTable(w, summaryRows, []string{"Column", "Value", "Frequency"}, header)
 }
 
 // printStats replaces the main table with a per-column breakdown of the
