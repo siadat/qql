@@ -149,7 +149,7 @@ func partitionConstantCols(rows []row, cols []string) (variable, constant []stri
 }
 
 // printTableWithSummary prints the main table with constant columns stripped,
-// followed by a blank line and a "Frequency | Column | Value" summary table
+// followed by a blank line and a small "Column | Value | Frequency" table
 // for the columns whose value was identical across every row.
 //
 // The point is to keep the main table narrow enough to fit common terminal
@@ -157,9 +157,14 @@ func partitionConstantCols(rows []row, cols []string) (variable, constant []stri
 // that's "up" for every match) are pulled out so the rows that DO vary stay
 // readable. The hoisted columns aren't dropped, just relocated to the
 // compact summary block below.
+//
+// The summary block is the same value-frequency table that --stats builds,
+// restricted to the entries at max frequency (one row per constant column,
+// frequency "N/N"). --summary is just --stats's value-frequency view filtered
+// to count == len(rows).
 func printTableWithSummary(w io.Writer, rows []row, selected []string, header bool) {
 	cols := resolveCols(rows, selected)
-	variable, constant, constValues := partitionConstantCols(rows, cols)
+	variable, constant, _ := partitionConstantCols(rows, cols)
 
 	if len(variable) > 0 || len(rows) == 0 {
 		printTable(w, rows, variable, header)
@@ -171,15 +176,10 @@ func printTableWithSummary(w io.Writer, rows []row, selected []string, header bo
 	if len(variable) > 0 || len(rows) == 0 {
 		fmt.Fprintln(w)
 	}
-	freq := fmt.Sprintf("%d/%d", len(rows), len(rows))
-	summaryRows := make([]row, 0, len(constant))
-	for _, c := range constant {
-		summaryRows = append(summaryRows, row{
-			"Frequency": freq,
-			"Column":    c,
-			"Value":     constValues[c],
-		})
-	}
+	// Constant cols are exactly the max-frequency entries of the value-
+	// frequency table, so passing only those cols is equivalent to filtering
+	// the full table to count == len(rows).
+	summaryRows := buildValueFrequencyRows(rows, constant)
 	printTable(w, summaryRows, []string{"Column", "Value", "Frequency"}, header)
 }
 
@@ -226,6 +226,58 @@ func printStats(w io.Writer, rows []row, selected []string, header bool) {
 		return statsRows[i]["Unique"].(int) < statsRows[j]["Unique"].(int)
 	})
 	printTable(w, statsRows, []string{"Unique", "Column", "Values"}, header)
+
+	freqRows := buildValueFrequencyRows(rows, cols)
+	if len(freqRows) == 0 {
+		return
+	}
+	fmt.Fprintln(w)
+	printTable(w, freqRows, []string{"Column", "Value", "Frequency"}, header)
+}
+
+// buildValueFrequencyRows returns one row per (column, value) pair across the
+// dataset, sorted by frequency descending so dominant values surface first.
+// Unlike the --summary view (which only hoists 100% constants), this lists
+// every value, e.g. a 7/8 dominant value still shows up alongside the 1/8
+// outlier. Ties on frequency break by column then value, both ascending, so
+// the order is deterministic.
+func buildValueFrequencyRows(rows []row, cols []string) []row {
+	if len(rows) == 0 {
+		return nil
+	}
+	type entry struct {
+		col, value string
+		count      int
+	}
+	var entries []entry
+	for _, c := range cols {
+		counts := map[string]int{}
+		for _, r := range rows {
+			counts[formatStatValue(r[c])]++
+		}
+		for v, n := range counts {
+			entries = append(entries, entry{c, v, n})
+		}
+	}
+	sort.SliceStable(entries, func(i, j int) bool {
+		if entries[i].count != entries[j].count {
+			return entries[i].count > entries[j].count
+		}
+		if entries[i].col != entries[j].col {
+			return entries[i].col < entries[j].col
+		}
+		return entries[i].value < entries[j].value
+	})
+	total := len(rows)
+	out := make([]row, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, row{
+			"Column":    e.col,
+			"Value":     e.value,
+			"Frequency": fmt.Sprintf("%d/%d", e.count, total),
+		})
+	}
+	return out
 }
 
 func formatStatValue(v any) string {
