@@ -225,14 +225,12 @@ func printStats(w io.Writer, rows []row, selected []string, header bool) {
 	sort.SliceStable(statsRows, func(i, j int) bool {
 		return statsRows[i]["Unique"].(int) < statsRows[j]["Unique"].(int)
 	})
-	printTable(w, statsRows, []string{"Unique", "Column", "Values"}, header)
 
-	freqRows := buildValueFrequencyRows(rows, cols)
-	if len(freqRows) == 0 {
-		return
-	}
-	fmt.Fprintln(w)
-	printTable(w, freqRows, []string{"Column", "Value", "Frequency"}, header)
+	// The value-frequency table (buildValueFrequencyRows) is intentionally
+	// suppressed for now — the helper is still used by --summary, which
+	// filters it to the max-frequency entries. Re-enable here when we want it
+	// back in the --stats view.
+	printTable(w, statsRows, []string{"Unique", "Column", "Values"}, header)
 }
 
 // buildValueFrequencyRows returns one row per (column, value) pair across the
