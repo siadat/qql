@@ -11,40 +11,33 @@ import (
 )
 
 func main() {
-	sqlFlag := flag.String("sql", "", `SQL-like query, e.g. "SELECT col1, col2 WHERE col3 > 5"`)
 	var outFlag string
 	flag.StringVar(&outFlag, "out", "table", "output format: table, json, jsonl")
 	flag.StringVar(&outFlag, "o", "table", "output format (shorthand for --out)")
 	noHeader := flag.Bool("no-header", false, "hide the header row and separator in table output")
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "usage: %s [--sql QUERY] [-o FORMAT] <file> [file ...]\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "usage: %s [-o FORMAT] QUERY [file ...]\n", os.Args[0])
 		flag.PrintDefaults()
 	}
 	flag.Parse()
 
-	var selected []string
-	var pred parser.WhereExpr
-	var sqlSource string
-	var orderBy []parser.OrderTerm
-	var limit = -1
-	var offset int
-	var with parser.WithOptions
-	var whereRaw string
-	var isCount bool
-	if *sqlFlag != "" {
-		s, src, p, ob, lim, off, w, wr, ic, err := parser.ParseSQL(*sqlFlag)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(2)
-		}
-		selected, sqlSource, pred, orderBy, limit, offset, with, whereRaw, isCount = s, src, p, ob, lim, off, w, wr, ic
+	args := flag.Args()
+	if len(args) == 0 {
+		flag.Usage()
+		os.Exit(2)
+	}
+
+	selected, sqlSource, pred, orderBy, limit, offset, with, whereRaw, isCount, err := parser.ParseSQL(args[0])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
 	}
 
 	var paths []string
 	if sqlSource != "" {
 		paths = append(paths, sqlSource)
 	}
-	paths = append(paths, flag.Args()...)
+	paths = append(paths, args[1:]...)
 
 	var rows []row
 	if with.Provider != "" {

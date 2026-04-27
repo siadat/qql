@@ -27,7 +27,7 @@ cache1: {cpu: 4, ram: 16, status: up, role: cache}
 Run:
 
 ```
-$ qql --sql "SELECT key, cpu, ram WHERE status = 'up' AND cpu >= 16" testdata/servers.yaml
+$ qql "SELECT key, cpu, ram WHERE status = 'up' AND cpu >= 16" testdata/servers.yaml
 ```
 Output:
 ```
@@ -89,18 +89,18 @@ You can plug in any executable as a row source with `WITH provider = 'external:<
 The bundled `examples/providers/fs.py` walks directories and emits one row per file:
 
 ```
-$ qql --sql "SELECT key, name, size
-             WHERE size > 100
-             ORDER BY size DESC
-             WITH provider = 'external:./examples/providers/fs.py'" ./testdata/
+$ qql "SELECT key, name, size
+       WHERE size > 100
+       ORDER BY size DESC
+       WITH provider = 'external:./examples/providers/fs.py'" ./testdata/
 ```
 
 The bundled `examples/providers/yaml_file_reader.py` reads YAML files and emits each document as a `tree`. qql unfolds it with the same dot-glob prefix used by built-in YAML/JSON loaders:
 
 ```
-$ qql --sql "SELECT key, cpu
-             WITH provider = 'external:./examples/providers/yaml_file_reader.py',
-                  prefix = '*.servers.*'" testdata/regions.yaml
+$ qql "SELECT key, cpu
+       WITH provider = 'external:./examples/providers/yaml_file_reader.py',
+            prefix = '*.servers.*'" testdata/regions.yaml
 ```
 
 ### Protocol
