@@ -44,7 +44,7 @@ func TestPrintJSON(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			printJSON(&buf, tt.rows, nil)
+			printJSON(&buf, tt.rows, nil, nil)
 			if got := buf.String(); got != tt.want {
 				t.Errorf("printJSON =\n%q\nwant:\n%q", got, tt.want)
 			}
@@ -78,11 +78,30 @@ func TestPrintJSONL(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			printJSONL(&buf, tt.rows, nil)
+			printJSONL(&buf, tt.rows, nil, nil)
 			if got := buf.String(); got != tt.want {
 				t.Errorf("printJSONL =\n%q\nwant:\n%q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestResolveColsExclude(t *testing.T) {
+	rows := []row{
+		{"key": "a", "cpu": 8, "ram": 16, "status": "up"},
+		{"key": "b", "cpu": 4, "ram": 8, "status": "down"},
+	}
+	got := resolveCols(rows, nil, []string{"status", "ram"})
+	want := []string{"key", "cpu"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("resolveCols(*, exclude=status,ram): got %v, want %v", got, want)
+	}
+
+	// Excluding a non-existent column is a silent no-op.
+	got = resolveCols(rows, nil, []string{"nonexistent"})
+	want = []string{"key", "cpu", "ram", "status"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("resolveCols(*, exclude=nonexistent): got %v, want %v", got, want)
 	}
 }
 
@@ -203,7 +222,7 @@ func TestPrintTableWithSummary(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			printTableWithSummary(&buf, tt.rows, tt.selected, true)
+			printTableWithSummary(&buf, tt.rows, tt.selected, nil, true)
 			if got := buf.String(); got != tt.want {
 				t.Errorf("printTableWithSummary =\n%s\nwant:\n%s", got, tt.want)
 			}
@@ -282,7 +301,7 @@ func TestPrintStats(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			printStats(&buf, tt.rows, tt.selected, true)
+			printStats(&buf, tt.rows, tt.selected, nil, true)
 			if got := buf.String(); got != tt.want {
 				t.Errorf("printStats =\n%s\nwant:\n%s", got, tt.want)
 			}

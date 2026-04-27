@@ -15,30 +15,47 @@ type row = map[string]any
 // otherwise the union of keys across rows. The wildcard-capture columns
 // (`key`, `key_capture_1`, `key_capture_2`, …) are pulled to the front so the
 // row identifier and its prefix-captures read left-to-right; the rest follow
-// alphabetically.
-func resolveCols(rows []row, selected []string) []string {
+// alphabetically. Names in `excluded` are dropped from the result, supporting
+// `SELECT * EXCLUDE(col1, col2)`.
+func resolveCols(rows []row, selected []string, excluded []string) []string {
+	var cols []string
 	if selected != nil {
-		return selected
+		cols = selected
+	} else {
+		colSet := map[string]struct{}{}
+		for _, r := range rows {
+			for k := range r {
+				colSet[k] = struct{}{}
+			}
+		}
+		var keyCols, otherCols []string
+		for c := range colSet {
+			if isKeyCol(c) {
+				keyCols = append(keyCols, c)
+			} else {
+				otherCols = append(otherCols, c)
+			}
+		}
+		sort.Slice(keyCols, func(i, j int) bool {
+			return keyColRank(keyCols[i]) < keyColRank(keyCols[j])
+		})
+		sort.Strings(otherCols)
+		cols = append(keyCols, otherCols...)
 	}
-	colSet := map[string]struct{}{}
-	for _, r := range rows {
-		for k := range r {
-			colSet[k] = struct{}{}
+	if len(excluded) == 0 {
+		return cols
+	}
+	excludeSet := make(map[string]struct{}, len(excluded))
+	for _, c := range excluded {
+		excludeSet[c] = struct{}{}
+	}
+	out := make([]string, 0, len(cols))
+	for _, c := range cols {
+		if _, skip := excludeSet[c]; !skip {
+			out = append(out, c)
 		}
 	}
-	var keyCols, otherCols []string
-	for c := range colSet {
-		if isKeyCol(c) {
-			keyCols = append(keyCols, c)
-		} else {
-			otherCols = append(otherCols, c)
-		}
-	}
-	sort.Slice(keyCols, func(i, j int) bool {
-		return keyColRank(keyCols[i]) < keyColRank(keyCols[j])
-	})
-	sort.Strings(otherCols)
-	return append(keyCols, otherCols...)
+	return out
 }
 
 func isKeyCol(c string) bool {
@@ -60,8 +77,8 @@ func keyColRank(c string) int {
 	return n
 }
 
-func printTable(w io.Writer, rows []row, selected []string, header bool) {
-	cols := resolveCols(rows, selected)
+func printTable(w io.Writer, rows []row, selected []string, excluded []string, header bool) {
+	cols := resolveCols(rows, selected, excluded)
 
 	cellAt := func(r row, c string) string {
 		v, ok := r[c]
@@ -162,12 +179,12 @@ func partitionConstantCols(rows []row, cols []string) (variable, constant []stri
 // restricted to the entries at max frequency (one row per constant column,
 // frequency "N/N"). --summary is just --stats's value-frequency view filtered
 // to count == len(rows).
-func printTableWithSummary(w io.Writer, rows []row, selected []string, header bool) {
-	cols := resolveCols(rows, selected)
+func printTableWithSummary(w io.Writer, rows []row, selected []string, excluded []string, header bool) {
+	cols := resolveCols(rows, selected, excluded)
 	variable, constant, _ := partitionConstantCols(rows, cols)
 
 	if len(variable) > 0 || len(rows) == 0 {
-		printTable(w, rows, variable, header)
+		printTable(w, rows, variable, nil, header)
 	}
 
 	if len(constant) == 0 {
@@ -180,7 +197,7 @@ func printTableWithSummary(w io.Writer, rows []row, selected []string, header bo
 	// frequency table, so passing only those cols is equivalent to filtering
 	// the full table to count == len(rows).
 	summaryRows := buildValueFrequencyRows(rows, constant)
-	printTable(w, summaryRows, []string{"Column", "Value", "Frequency"}, header)
+	printTable(w, summaryRows, []string{"Column", "Value", "Frequency"}, nil, header)
 }
 
 // printStats replaces the main table with a per-column breakdown of the
@@ -193,8 +210,8 @@ func printTableWithSummary(w io.Writer, rows []row, selected []string, header bo
 // "val (freq)" list sorted by frequency descending (ties broken by value
 // ascending) and joined with ", ". Missing keys count as nil and render as
 // "null", matching the main table.
-func printStats(w io.Writer, rows []row, selected []string, header bool) {
-	cols := resolveCols(rows, selected)
+func printStats(w io.Writer, rows []row, selected []string, excluded []string, header bool) {
+	cols := resolveCols(rows, selected, excluded)
 	statsRows := make([]row, 0, len(cols))
 	for _, c := range cols {
 		counts := map[string]int{}
@@ -230,7 +247,7 @@ func printStats(w io.Writer, rows []row, selected []string, header bool) {
 	// suppressed for now — the helper is still used by --summary, which
 	// filters it to the max-frequency entries. Re-enable here when we want it
 	// back in the --stats view.
-	printTable(w, statsRows, []string{"Cardinality", "Column", "Values"}, header)
+	printTable(w, statsRows, []string{"Cardinality", "Column", "Values"}, nil, header)
 }
 
 // buildValueFrequencyRows returns one row per (column, value) pair across the

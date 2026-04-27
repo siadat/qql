@@ -53,7 +53,7 @@ Keywords are case-insensitive. String literals use single or double quotes (no e
 
 ### SELECT
 
-`SELECT *` keeps every column. A comma-separated list of identifiers projects exactly those columns. Identifiers may contain dot paths like `address.city` or `tags.0`. `SELECT COUNT(*)` collapses the post-WHERE result to a single row with one `count` column and cannot be combined with regular projections. Only the bare `COUNT(*)` form is supported (no `COUNT(col)`, no `COUNT(DISTINCT ...)`).
+`SELECT *` keeps every column. `SELECT * EXCLUDE(col1, col2)` keeps every column except the listed ones, useful for hiding noisy fields without spelling out the rest. A comma-separated list of identifiers projects exactly those columns. Identifiers may contain dot paths like `address.city` or `tags.0`. `SELECT COUNT(*)` collapses the post-WHERE result to a single row with one `count` column and cannot be combined with regular projections. Only the bare `COUNT(*)` form is supported (no `COUNT(col)`, no `COUNT(DISTINCT ...)`).
 
 ### FROM
 

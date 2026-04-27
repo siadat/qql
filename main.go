@@ -29,7 +29,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	selected, sqlSource, pred, orderBy, limit, offset, with, whereRaw, isCount, err := parser.ParseSQL(args[0])
+	selected, excluded, sqlSource, pred, orderBy, limit, offset, with, whereRaw, isCount, err := parser.ParseSQL(args[0])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
@@ -143,16 +143,16 @@ func main() {
 	case "table":
 		switch {
 		case *stats:
-			printStats(os.Stdout, rows, selected, !*noHeader)
+			printStats(os.Stdout, rows, selected, excluded, !*noHeader)
 		case *summary:
-			printTableWithSummary(os.Stdout, rows, selected, !*noHeader)
+			printTableWithSummary(os.Stdout, rows, selected, excluded, !*noHeader)
 		default:
-			printTable(os.Stdout, rows, selected, !*noHeader)
+			printTable(os.Stdout, rows, selected, excluded, !*noHeader)
 		}
 	case "json":
-		printJSON(os.Stdout, rows, selected)
+		printJSON(os.Stdout, rows, selected, excluded)
 	case "jsonl":
-		printJSONL(os.Stdout, rows, selected)
+		printJSONL(os.Stdout, rows, selected, excluded)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown output format %q (want table, json, or jsonl)\n", outFlag)
 		os.Exit(2)

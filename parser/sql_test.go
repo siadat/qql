@@ -75,7 +75,7 @@ func TestParseSQL(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			cols, source, pred, orderBy, limit, offset, with, whereRaw, isCount, err := ParseSQL(c.src)
+			cols, _, source, pred, orderBy, limit, offset, with, whereRaw, isCount, err := ParseSQL(c.src)
 			if err != nil {
 				t.Fatalf("parse %q: %v", c.src, err)
 			}
@@ -196,10 +196,17 @@ func TestParseSQLErrors(t *testing.T) {
 		{"offset before limit", "OFFSET 5 LIMIT 3"},
 		{"offset before order by", "OFFSET 5 ORDER BY a"},
 		{"offset after with", "WITH prefix = 'x' OFFSET 5"},
+		{"exclude without parens", "SELECT * EXCLUDE a"},
+		{"exclude empty list", "SELECT * EXCLUDE()"},
+		{"exclude unclosed paren", "SELECT * EXCLUDE(a"},
+		{"exclude trailing comma", "SELECT * EXCLUDE(a,)"},
+		{"exclude non-ident", "SELECT * EXCLUDE(1)"},
+		{"exclude after explicit list", "SELECT a EXCLUDE(b)"},
+		{"exclude after count", "SELECT COUNT(*) EXCLUDE(a)"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, _, _, _, _, _, _, _, _, err := ParseSQL(c.src)
+			_, _, _, _, _, _, _, _, _, _, err := ParseSQL(c.src)
 			if err == nil {
 				t.Errorf("expected error for %q", c.src)
 			}
@@ -224,7 +231,7 @@ func TestParseSQLCount(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			cols, source, pred, _, _, _, _, whereRaw, isCount, err := ParseSQL(c.src)
+			cols, _, source, pred, _, _, _, _, whereRaw, isCount, err := ParseSQL(c.src)
 			if err != nil {
 				t.Fatalf("parse %q: %v", c.src, err)
 			}
@@ -247,10 +254,41 @@ func TestParseSQLCount(t *testing.T) {
 	}
 }
 
+func TestParseSQLExclude(t *testing.T) {
+	cases := []struct {
+		name         string
+		src          string
+		wantExcluded []string
+	}{
+		{"exclude single", "SELECT * EXCLUDE(a)", []string{"a"}},
+		{"exclude multi", "SELECT * EXCLUDE(a, b, c)", []string{"a", "b", "c"}},
+		{"exclude dot path", "SELECT * EXCLUDE(address.city)", []string{"address.city"}},
+		{"exclude lowercase keyword", "SELECT * exclude(a)", []string{"a"}},
+		{"exclude with full pipeline", "SELECT * EXCLUDE(status) FROM /tmp/x.json WHERE cpu > 8 ORDER BY ram WITH prefix = '*.servers.*'", []string{"status"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			cols, excluded, _, _, _, _, _, _, _, isCount, err := ParseSQL(c.src)
+			if err != nil {
+				t.Fatalf("parse %q: %v", c.src, err)
+			}
+			if cols != nil {
+				t.Errorf("cols: got %v, want nil (SELECT *)", cols)
+			}
+			if isCount {
+				t.Errorf("isCount: got true, want false")
+			}
+			if !reflect.DeepEqual(excluded, c.wantExcluded) {
+				t.Errorf("excluded: got %v, want %v", excluded, c.wantExcluded)
+			}
+		})
+	}
+}
+
 // "count" without a following `(` is still a usable column name — the special
 // parsing kicks in only on the function-call form COUNT(*).
 func TestParseSQLCountNotKeyword(t *testing.T) {
-	cols, _, _, _, _, _, _, _, isCount, err := ParseSQL("SELECT count, total")
+	cols, _, _, _, _, _, _, _, _, isCount, err := ParseSQL("SELECT count, total")
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -270,7 +308,7 @@ func TestParseSQLEvalIntegration(t *testing.T) {
 		{"key": "carol", "age": 41, "city": "LA"},
 	}
 
-	_, _, pred, _, _, _, _, _, _, err := ParseSQL("SELECT age WHERE age >= 30")
+	_, _, _, pred, _, _, _, _, _, _, err := ParseSQL("SELECT age WHERE age >= 30")
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}

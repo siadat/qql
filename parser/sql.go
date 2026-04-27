@@ -42,6 +42,7 @@ const (
 	tokComma
 	tokStar
 	tokSource
+	tokExclude
 )
 
 type token struct {
@@ -117,6 +118,8 @@ func tokenize(src string) ([]token, error) {
 				kind = tokWith
 			case "matches":
 				kind = tokMatches
+			case "exclude":
+				kind = tokExclude
 			}
 			toks = append(toks, token{kind, text, start})
 		case isDigit(c):
@@ -238,12 +241,16 @@ type WithOptions struct {
 // yields zero rows. offset defaults to 0 (no rows skipped).
 //
 // isCount is true for `SELECT COUNT(*)`. When set, the caller should collapse
-// the post-WHERE rows into a single row with a `count` column; selected is nil
+// the post-WHERE rows into a single row with a `count` column. selected is nil
 // in that case.
-func ParseSQL(src string) (selected []string, source string, pred WhereExpr, orderBy []OrderTerm, limit, offset int, with WithOptions, whereRaw string, isCount bool, err error) {
+//
+// excluded is the column list from `SELECT * EXCLUDE(col1, col2, ...)`. It is
+// only set when the projection was a star plus an EXCLUDE clause; the caller
+// should drop those columns from whatever set `*` would otherwise produce.
+func ParseSQL(src string) (selected []string, excluded []string, source string, pred WhereExpr, orderBy []OrderTerm, limit, offset int, with WithOptions, whereRaw string, isCount bool, err error) {
 	limit = -1
-	fail := func(e error) (selected []string, source string, pred WhereExpr, orderBy []OrderTerm, limit, offset int, with WithOptions, whereRaw string, isCount bool, err error) {
-		return nil, "", nil, nil, -1, 0, WithOptions{}, "", false, e
+	fail := func(e error) (selected []string, excluded []string, source string, pred WhereExpr, orderBy []OrderTerm, limit, offset int, with WithOptions, whereRaw string, isCount bool, err error) {
+		return nil, nil, "", nil, nil, -1, 0, WithOptions{}, "", false, e
 	}
 	toks, err := tokenize(src)
 	if err != nil {
@@ -253,7 +260,7 @@ func ParseSQL(src string) (selected []string, source string, pred WhereExpr, ord
 
 	if p.peek().kind == tokSelect {
 		p.advance()
-		selected, isCount, err = parseSelectList(p)
+		selected, excluded, isCount, err = parseSelectList(p)
 		if err != nil {
 			return fail(err)
 		}
@@ -320,7 +327,7 @@ func ParseSQL(src string) (selected []string, source string, pred WhereExpr, ord
 	if t := p.peek(); t.kind != tokEOF {
 		return fail(fmt.Errorf("unexpected token %q at offset %d", t.text, t.pos))
 	}
-	return selected, source, pred, orderBy, limit, offset, with, whereRaw, isCount, nil
+	return selected, excluded, source, pred, orderBy, limit, offset, with, whereRaw, isCount, nil
 }
 
 // parseNonNegativeInt consumes the next token, expecting a non-negative
@@ -402,10 +409,17 @@ func parseOrderBy(p *parseState) ([]OrderTerm, error) {
 	return terms, nil
 }
 
-func parseSelectList(p *parseState) ([]string, bool, error) {
+func parseSelectList(p *parseState) (cols []string, excluded []string, isCount bool, err error) {
 	if p.peek().kind == tokStar {
 		p.advance()
-		return nil, false, nil
+		if p.peek().kind == tokExclude {
+			p.advance()
+			excluded, err = parseExcludeList(p)
+			if err != nil {
+				return nil, nil, false, err
+			}
+		}
+		return nil, excluded, false, nil
 	}
 	// COUNT is recognized lexically only when followed by `(` so that "count"
 	// remains usable as a regular column name.
@@ -414,19 +428,21 @@ func parseSelectList(p *parseState) ([]string, bool, error) {
 		p.advance() // (
 		star := p.advance()
 		if star.kind != tokStar {
-			return nil, false, fmt.Errorf("expected * inside COUNT() at offset %d, got %q (only COUNT(*) is supported)", star.pos, star.text)
+			return nil, nil, false, fmt.Errorf("expected * inside COUNT() at offset %d, got %q (only COUNT(*) is supported)", star.pos, star.text)
 		}
 		rp := p.advance()
 		if rp.kind != tokRParen {
-			return nil, false, fmt.Errorf("expected ')' to close COUNT(*) at offset %d, got %q", rp.pos, rp.text)
+			return nil, nil, false, fmt.Errorf("expected ')' to close COUNT(*) at offset %d, got %q", rp.pos, rp.text)
 		}
-		return nil, true, nil
+		if p.peek().kind == tokExclude {
+			return nil, nil, false, fmt.Errorf("EXCLUDE is not allowed with COUNT(*) at offset %d", p.peek().pos)
+		}
+		return nil, nil, true, nil
 	}
-	var cols []string
 	for {
 		t := p.advance()
 		if t.kind != tokIdent {
-			return nil, false, fmt.Errorf("expected column name at offset %d, got %q", t.pos, t.text)
+			return nil, nil, false, fmt.Errorf("expected column name at offset %d, got %q", t.pos, t.text)
 		}
 		cols = append(cols, t.text)
 		if p.peek().kind != tokComma {
@@ -434,7 +450,37 @@ func parseSelectList(p *parseState) ([]string, bool, error) {
 		}
 		p.advance()
 	}
-	return cols, false, nil
+	if p.peek().kind == tokExclude {
+		return nil, nil, false, fmt.Errorf("EXCLUDE is only allowed after SELECT * at offset %d", p.peek().pos)
+	}
+	return cols, nil, false, nil
+}
+
+// parseExcludeList consumes `(col1, col2, ...)` after the EXCLUDE keyword. The
+// list must be non-empty; identifiers may carry dot paths just like SELECT
+// projections.
+func parseExcludeList(p *parseState) ([]string, error) {
+	if t := p.peek(); t.kind != tokLParen {
+		return nil, fmt.Errorf("expected '(' after EXCLUDE at offset %d, got %q", t.pos, t.text)
+	}
+	p.advance()
+	var cols []string
+	for {
+		t := p.advance()
+		if t.kind != tokIdent {
+			return nil, fmt.Errorf("expected column name in EXCLUDE list at offset %d, got %q", t.pos, t.text)
+		}
+		cols = append(cols, t.text)
+		if p.peek().kind != tokComma {
+			break
+		}
+		p.advance()
+	}
+	if t := p.peek(); t.kind != tokRParen {
+		return nil, fmt.Errorf("expected ')' to close EXCLUDE list at offset %d, got %q", t.pos, t.text)
+	}
+	p.advance()
+	return cols, nil
 }
 
 func ParseWhere(src string) (WhereExpr, error) {
