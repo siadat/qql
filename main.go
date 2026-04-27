@@ -16,6 +16,7 @@ func main() {
 	flag.StringVar(&outFlag, "o", "table", "output format (shorthand for --out)")
 	noHeader := flag.Bool("no-header", false, "hide the header row and separator in table output")
 	summary := flag.Bool("summary", false, "shrink the table by hoisting columns whose value is identical across every row into a small summary table printed below, so the main table is narrower and fits more terminals")
+	stats := flag.Bool("stats", false, "instead of the rows, print a per-column breakdown: unique-value count and a 'value (freq)' list sorted by frequency, useful for sizing up a result set without scrolling")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "usage: %s [-o FORMAT] QUERY [file ...]\n", os.Args[0])
 		flag.PrintDefaults()
@@ -130,24 +131,27 @@ func main() {
 		rows = rows[:limit]
 	}
 
+	if *summary && *stats {
+		fmt.Fprintln(os.Stderr, "--summary and --stats are mutually exclusive")
+		os.Exit(2)
+	}
+	if (*summary || *stats) && outFlag != "table" {
+		fmt.Fprintln(os.Stderr, "--summary and --stats are only supported for table output")
+		os.Exit(2)
+	}
 	switch outFlag {
 	case "table":
-		if *summary {
+		switch {
+		case *stats:
+			printStats(os.Stdout, rows, selected, !*noHeader)
+		case *summary:
 			printTableWithSummary(os.Stdout, rows, selected, !*noHeader)
-		} else {
+		default:
 			printTable(os.Stdout, rows, selected, !*noHeader)
 		}
 	case "json":
-		if *summary {
-			fmt.Fprintln(os.Stderr, "--summary is only supported for table output")
-			os.Exit(2)
-		}
 		printJSON(os.Stdout, rows, selected)
 	case "jsonl":
-		if *summary {
-			fmt.Fprintln(os.Stderr, "--summary is only supported for table output")
-			os.Exit(2)
-		}
 		printJSONL(os.Stdout, rows, selected)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown output format %q (want table, json, or jsonl)\n", outFlag)

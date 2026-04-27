@@ -182,3 +182,55 @@ func printTableWithSummary(w io.Writer, rows []row, selected []string, header bo
 	}
 	printTable(w, summaryRows, []string{"Frequency", "Column", "Value"}, header)
 }
+
+// printStats replaces the main table with a per-column breakdown of the
+// distinct values seen and how often each one occurs. It is meant for getting
+// a quick feel for a result set's shape (cardinality, dominant values) without
+// scrolling through every row, e.g. "is this column basically constant?", "how
+// many distinct authors are in this commit query?".
+//
+// Each output row carries: the count of unique values, the column name, and a
+// "val (freq)" list sorted by frequency descending (ties broken by value
+// ascending) and joined with ", ". Missing keys count as nil and render as
+// "null", matching the main table.
+func printStats(w io.Writer, rows []row, selected []string, header bool) {
+	cols := resolveCols(rows, selected)
+	statsRows := make([]row, 0, len(cols))
+	for _, c := range cols {
+		counts := map[string]int{}
+		var order []string
+		for _, r := range rows {
+			s := formatStatValue(r[c])
+			if _, seen := counts[s]; !seen {
+				order = append(order, s)
+			}
+			counts[s]++
+		}
+		sort.SliceStable(order, func(i, j int) bool {
+			if counts[order[i]] != counts[order[j]] {
+				return counts[order[i]] > counts[order[j]]
+			}
+			return order[i] < order[j]
+		})
+		parts := make([]string, len(order))
+		for i, v := range order {
+			parts[i] = fmt.Sprintf("%s (%d)", v, counts[v])
+		}
+		statsRows = append(statsRows, row{
+			"Unique": len(order),
+			"Column": c,
+			"Values": strings.Join(parts, ", "),
+		})
+	}
+	sort.SliceStable(statsRows, func(i, j int) bool {
+		return statsRows[i]["Unique"].(int) < statsRows[j]["Unique"].(int)
+	})
+	printTable(w, statsRows, []string{"Unique", "Column", "Values"}, header)
+}
+
+func formatStatValue(v any) string {
+	if v == nil {
+		return "null"
+	}
+	return fmt.Sprintf("%v", v)
+}

@@ -210,3 +210,82 @@ func TestPrintTableWithSummary(t *testing.T) {
 		})
 	}
 }
+
+func TestPrintStats(t *testing.T) {
+	tests := []struct {
+		name     string
+		rows     []row
+		selected []string
+		want     string
+	}{
+		{
+			name: "frequency descending then value ascending",
+			rows: []row{
+				{"col1": "x", "col2": "a"},
+				{"col1": "x", "col2": "a"},
+				{"col1": "x", "col2": "b"},
+			},
+			selected: []string{"col1", "col2"},
+			want: "Unique  Column  Values\n" +
+				"------  ------  ------------\n" +
+				"1       col1    x (3)\n" +
+				"2       col2    a (2), b (1)\n",
+		},
+		{
+			name: "ties broken by value ascending",
+			rows: []row{
+				{"c": "b"},
+				{"c": "a"},
+				{"c": "c"},
+			},
+			selected: []string{"c"},
+			want: "Unique  Column  Values\n" +
+				"------  ------  -------------------\n" +
+				"3       c       a (1), b (1), c (1)\n",
+		},
+		{
+			name: "missing keys count as null",
+			rows: []row{
+				{"a": 1},
+				{"a": 2},
+				{"a": 1},
+			},
+			selected: []string{"a", "b"},
+			want: "Unique  Column  Values\n" +
+				"------  ------  ------------\n" +
+				"1       b       null (3)\n" +
+				"2       a       1 (2), 2 (1)\n",
+		},
+		{
+			name:     "zero rows produces only the header",
+			rows:     nil,
+			selected: []string{"a", "b"},
+			want: "Unique  Column  Values\n" +
+				"------  ------  ------\n" +
+				"0       a       \n" +
+				"0       b       \n",
+		},
+		{
+			name: "rows sorted by unique-value count ascending",
+			rows: []row{
+				{"low": "x", "high": "a"},
+				{"low": "x", "high": "b"},
+				{"low": "x", "high": "c"},
+			},
+			selected: []string{"high", "low"},
+			want: "Unique  Column  Values\n" +
+				"------  ------  -------------------\n" +
+				"1       low     x (3)\n" +
+				"3       high    a (1), b (1), c (1)\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			printStats(&buf, tt.rows, tt.selected, true)
+			if got := buf.String(); got != tt.want {
+				t.Errorf("printStats =\n%s\nwant:\n%s", got, tt.want)
+			}
+		})
+	}
+}
