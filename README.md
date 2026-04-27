@@ -47,7 +47,7 @@ A query is a sequence of clauses written in this fixed order; every clause is op
 - `OFFSET <M>`
 - `WITH <key> = '<value>' [, ...]`
 
-Keywords are case-insensitive. String literals use single or double quotes (no escapes — bytes are taken verbatim, which keeps regex and path-glob values readable). Numbers may be integer or floating-point. The keywords `true`, `false`, and `null` carry their usual meaning.
+Keywords are case-insensitive. String literals use single or double quotes (no escapes: bytes are taken verbatim, which keeps regex and path-glob values readable). Numbers may be integer or floating-point. The keywords `true`, `false`, and `null` carry their usual meaning.
 
 ### SELECT
 
@@ -59,7 +59,10 @@ A path to a YAML or JSON file. When absent, positional CLI arguments supply the 
 
 ### WHERE
 
-A boolean expression over column references and literals. Comparison operators are `=`, `!=`, `<`, `<=`, `>`, `>=`. The pattern operator `MATCHES '<regex>'` runs a Go regular expression against the value. Logical connectives are `AND`, `OR`, `NOT`, with parentheses for grouping. Type mismatches between operands evaluate to false; only `= null` / `!= null` are useful — relational comparisons against `null` yield false.
+- A boolean expression over column references and literals. Comparison operators are `=`, `!=`, `<`, `<=`, `>`, `>=`.
+- The pattern operator `MATCHES '<regex>'` runs a Go regular expression against the value.
+- Logical connectives are `AND`, `OR`, `NOT`, with parentheses for grouping.
+- Type mismatches between operands evaluate to false; only `= null` / `!= null` are useful: relational comparisons against `null` yield false.
 
 ### ORDER BY
 
@@ -73,27 +76,26 @@ One or more `<column> [ASC|DESC]` terms separated by commas; `ASC` is the defaul
 
 Trailing configuration as a comma-separated list of `<key> = '<value>'` pairs. Recognized keys:
 
-- `prefix = '<glob>'` — extract rows from a nested dot-path. A `*` segment matches any map key and captures it; literal segments descend without capturing; non-matching branches are silently skipped. The rightmost `*` becomes the `key` column and carries the full path from the root (e.g. `*.servers` yields `key = "region-a.servers"`); earlier `*`s become `key_capture_1`, `key_capture_2`, … and carry just the matched key, useful for `WHERE` filtering.
-- `provider = 'git:<repo>'` — read commit rows from the given repository (use `git:.` for the current directory). Columns: `commit`, `author`, `email`, `time`, `subject`. `FROM` and positional paths are ignored.
-- `provider = 'external:<script>'` — replace built-in dispatch with a user-supplied script (see "External providers").
+- `prefix = '<glob>'`: extract rows from a nested dot-path. A `*` segment matches any map key and captures it; literal segments descend without capturing; non-matching branches are silently skipped. The rightmost `*` becomes the `key` column and carries the full path from the root (e.g. `*.servers` yields `key = "region-a.servers"`); earlier `*`s become `key_capture_1`, `key_capture_2`, … and carry just the matched key, useful for `WHERE` filtering.
+- `provider = 'git:<repo>'`: read commit rows from the given repository (use `git:.` for the current directory). Columns: `commit`, `author`, `email`, `time`, `subject`. `FROM` and positional paths are ignored.
+- `provider = 'external:<script>'`: replace built-in dispatch with a user-supplied script (see "External providers").
 
 ## External providers
 
-You can plug in any executable as a row source with `WITH provider = 'external:<path>'`. qql execs the script once per query, hands it a JSON request on stdin, and reads JSONL rows from stdout. WHERE/ORDER BY are re-applied by qql, so the script is free to ignore them — the script doesn't need to understand qql's predicate grammar to participate.
+You can plug in any executable as a row source with `WITH provider = 'external:<path>'`. qql execs the script once per query, hands it a JSON request on stdin, and reads JSONL rows from stdout. WHERE/ORDER BY are re-applied by qql, so the script is free to ignore them: the script doesn't need to understand qql's predicate grammar to participate.
 
 The bundled `examples/providers/fs.py` walks directories and emits one row per file:
 
 ```
-$ qql --sql "SELECT key, name, size WHERE size > 100 ORDER BY size DESC WITH provider = 'external:./examples/providers/fs.py'" testdata
-key                    name          size
----------------------  ------------  ----
-testdata/regions.yaml  regions.yaml  311
-testdata/servers.yaml  servers.yaml  242
+$ qql --sql "SELECT key, name, size
+             WHERE size > 100
+             ORDER BY size DESC
+             WITH provider = 'external:./examples/providers/fs.py'" ./testdata/
 ```
 
-### Wire protocol
+### Protocol
 
-- **stdin** — one JSON object, then EOF:
+- **stdin**: one JSON object, then EOF:
   ```json
   {
     "version": 1,
@@ -107,8 +109,8 @@ testdata/servers.yaml  servers.yaml  242
   ```
   Every field after `version` is a hint. `where` is the **raw SQL substring** of the WHERE clause; the script can grep it, ignore it, or reparse it. qql always re-applies the parsed predicate to whatever rows the script returns.
 
-- **stdout** — JSONL. One JSON object per line. Empty lines and `#`-prefixed comment lines are skipped. Malformed lines are logged to stderr and dropped.
+- **stdout**: JSONL. One JSON object per line. Empty lines and `#`-prefixed comment lines are skipped. Malformed lines are logged to stderr and dropped.
 
-- **stderr** — passes through to your terminal verbatim, so progress logs and error messages from the script surface naturally.
+- **stderr**: passes through to your terminal verbatim, so progress logs and error messages from the script surface naturally.
 
-- **exit code** — non-zero aborts the query; qql discards stdout and surfaces the error.
+- **exit code**: non-zero aborts the query; qql discards stdout and surfaces the error.
