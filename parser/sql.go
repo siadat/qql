@@ -523,7 +523,11 @@ func (p *parseState) parseComparison() (WhereExpr, error) {
 	if err != nil {
 		return nil, err
 	}
-	if p.peek().kind == tokMatches {
+	if p.peek().kind == tokMatches || (p.peek().kind == tokNot && p.pos+1 < len(p.toks) && p.toks[p.pos+1].kind == tokMatches) {
+		negated := p.peek().kind == tokNot
+		if negated {
+			p.advance()
+		}
 		p.advance()
 		pat := p.advance()
 		if pat.kind != tokString {
@@ -533,7 +537,11 @@ func (p *parseState) parseComparison() (WhereExpr, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid regex %q at offset %d: %v", pat.text, pat.pos, err)
 		}
-		return &matchesExpr{left: left, re: re}, nil
+		var expr WhereExpr = &matchesExpr{left: left, re: re}
+		if negated {
+			expr = &notExpr{inner: expr}
+		}
+		return expr, nil
 	}
 	t := p.peek()
 	var op cmpOp

@@ -75,6 +75,11 @@ func TestEval(t *testing.T) {
 		{"matches on number coerced", `age MATCHES '^4'`, []string{"carol"}},
 		{"matches on missing col", `tags.0 MATCHES '.*'`, []string{"alice"}},
 		{"NOT matches", `NOT key MATCHES '^a'`, []string{"bob", "carol"}},
+		{"NOT MATCHES infix", `key NOT MATCHES '^a'`, []string{"bob", "carol"}},
+		{"not matches lowercase", `key not matches '^a'`, []string{"bob", "carol"}},
+		{"NOT MATCHES no result", `key NOT MATCHES '.'`, nil},
+		{"NOT MATCHES on missing col", `tags.0 NOT MATCHES '.*'`, []string{"bob", "carol"}},
+		{"NOT MATCHES AND eq", `key NOT MATCHES '^a' AND active = false`, []string{"bob"}},
 		{"matches AND eq", `key MATCHES '^[ab]' AND active = true`, []string{"alice"}},
 	}
 
