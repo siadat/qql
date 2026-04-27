@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -116,4 +117,68 @@ func printTable(w io.Writer, rows []row, selected []string, header bool) {
 		}
 		writeRow(vals)
 	}
+}
+
+// partitionConstantCols splits cols into ones whose value differs across rows
+// (variable) and ones whose value is identical for every row (constant). The
+// constValues map carries the shared value for each constant column. Missing
+// keys count as nil, so a column absent from every row is treated as constant
+// nil. With zero rows nothing is constant.
+func partitionConstantCols(rows []row, cols []string) (variable, constant []string, constValues map[string]any) {
+	if len(rows) == 0 {
+		return cols, nil, nil
+	}
+	constValues = map[string]any{}
+	for _, c := range cols {
+		first := rows[0][c]
+		allSame := true
+		for _, r := range rows[1:] {
+			if !reflect.DeepEqual(r[c], first) {
+				allSame = false
+				break
+			}
+		}
+		if allSame {
+			constant = append(constant, c)
+			constValues[c] = first
+		} else {
+			variable = append(variable, c)
+		}
+	}
+	return variable, constant, constValues
+}
+
+// printTableWithSummary prints the main table with constant columns stripped,
+// followed by a blank line and a "Frequency | Column | Value" summary table
+// for the columns whose value was identical across every row.
+//
+// The point is to keep the main table narrow enough to fit common terminal
+// widths: columns that carry no per-row information (e.g. a status column
+// that's "up" for every match) are pulled out so the rows that DO vary stay
+// readable. The hoisted columns aren't dropped, just relocated to the
+// compact summary block below.
+func printTableWithSummary(w io.Writer, rows []row, selected []string, header bool) {
+	cols := resolveCols(rows, selected)
+	variable, constant, constValues := partitionConstantCols(rows, cols)
+
+	if len(variable) > 0 || len(rows) == 0 {
+		printTable(w, rows, variable, header)
+	}
+
+	if len(constant) == 0 {
+		return
+	}
+	if len(variable) > 0 || len(rows) == 0 {
+		fmt.Fprintln(w)
+	}
+	freq := fmt.Sprintf("%d/%d", len(rows), len(rows))
+	summaryRows := make([]row, 0, len(constant))
+	for _, c := range constant {
+		summaryRows = append(summaryRows, row{
+			"Frequency": freq,
+			"Column":    c,
+			"Value":     constValues[c],
+		})
+	}
+	printTable(w, summaryRows, []string{"Frequency", "Column", "Value"}, header)
 }

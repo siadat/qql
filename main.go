@@ -15,6 +15,7 @@ func main() {
 	flag.StringVar(&outFlag, "out", "table", "output format: table, json, jsonl")
 	flag.StringVar(&outFlag, "o", "table", "output format (shorthand for --out)")
 	noHeader := flag.Bool("no-header", false, "hide the header row and separator in table output")
+	summary := flag.Bool("summary", false, "shrink the table by hoisting columns whose value is identical across every row into a small summary table printed below, so the main table is narrower and fits more terminals")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "usage: %s [-o FORMAT] QUERY [file ...]\n", os.Args[0])
 		flag.PrintDefaults()
@@ -131,10 +132,22 @@ func main() {
 
 	switch outFlag {
 	case "table":
-		printTable(os.Stdout, rows, selected, !*noHeader)
+		if *summary {
+			printTableWithSummary(os.Stdout, rows, selected, !*noHeader)
+		} else {
+			printTable(os.Stdout, rows, selected, !*noHeader)
+		}
 	case "json":
+		if *summary {
+			fmt.Fprintln(os.Stderr, "--summary is only supported for table output")
+			os.Exit(2)
+		}
 		printJSON(os.Stdout, rows, selected)
 	case "jsonl":
+		if *summary {
+			fmt.Fprintln(os.Stderr, "--summary is only supported for table output")
+			os.Exit(2)
+		}
 		printJSONL(os.Stdout, rows, selected)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown output format %q (want table, json, or jsonl)\n", outFlag)
