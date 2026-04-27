@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 
@@ -17,6 +18,7 @@ func main() {
 	noHeader := flag.Bool("no-header", false, "hide the header row and separator in table output")
 	summary := flag.Bool("summary", false, "shrink the table by hoisting columns whose value is identical across every row into a small summary table printed below, so the main table is narrower and fits more terminals")
 	stats := flag.Bool("stats", false, "instead of the rows, print a per-column breakdown: unique-value count and a 'value (freq)' list sorted by frequency, useful for sizing up a result set without scrolling")
+	noTruncate := flag.Bool("no-truncate", false, "do not clip lines to terminal width. by default, when stdout is an interactive terminal, table output is truncated so wrapping does not garble the layout")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "usage: %s [-o FORMAT] QUERY [file ...]\n", os.Args[0])
 		flag.PrintDefaults()
@@ -139,23 +141,41 @@ func main() {
 		fmt.Fprintln(os.Stderr, "--summary and --stats are only supported for table output")
 		os.Exit(2)
 	}
+	// Truncation is opt-in to TTY-only and only for table-shaped output
+	// (json/jsonl must stay structurally valid for downstream consumers).
+	var out io.Writer = os.Stdout
+	var trunc *truncatingWriter
+	if !*noTruncate && outFlag == "table" && isTerminal(os.Stdout) {
+		if width, ok := terminalWidth(os.Stdout); ok {
+			trunc = newTruncatingWriter(os.Stdout, width)
+			out = trunc
+		}
+	}
+
 	switch outFlag {
 	case "table":
 		switch {
 		case *stats:
-			printStats(os.Stdout, rows, selected, excluded, !*noHeader)
+			printStats(out, rows, selected, excluded, !*noHeader)
 		case *summary:
-			printTableWithSummary(os.Stdout, rows, selected, excluded, !*noHeader)
+			printTableWithSummary(out, rows, selected, excluded, !*noHeader)
 		default:
-			printTable(os.Stdout, rows, selected, excluded, !*noHeader)
+			printTable(out, rows, selected, excluded, !*noHeader)
 		}
 	case "json":
-		printJSON(os.Stdout, rows, selected, excluded)
+		printJSON(out, rows, selected, excluded)
 	case "jsonl":
-		printJSONL(os.Stdout, rows, selected, excluded)
+		printJSONL(out, rows, selected, excluded)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown output format %q (want table, json, or jsonl)\n", outFlag)
 		os.Exit(2)
+	}
+
+	if trunc != nil {
+		_ = trunc.Flush()
+		if trunc.Truncated() {
+			fmt.Fprintf(os.Stderr, "(Some lines were clipped to terminal width %d. Pass --no-truncate or widen the terminal to see the full output.)\n", trunc.width)
+		}
 	}
 }
 
