@@ -226,16 +226,10 @@ func TestPrintStats(t *testing.T) {
 				{"col1": "x", "col2": "b"},
 			},
 			selected: []string{"col1", "col2"},
-			want: "Column  Value  Frequency\n" +
-				"------  -----  ---------\n" +
-				"col1    x      3/3\n" +
-				"col2    a      2/3\n" +
-				"col2    b      1/3\n" +
-				"\n" +
-				"Unique  Column  Values\n" +
-				"------  ------  ------------\n" +
-				"1       col1    x (3)\n" +
-				"2       col2    a (2), b (1)\n",
+			want: "Cardinality  Column  Values\n" +
+				"-----------  ------  ------------\n" +
+				"1            col1    x (3)\n" +
+				"2            col2    a (2), b (1)\n",
 		},
 		{
 			name: "ties broken by value ascending",
@@ -245,15 +239,9 @@ func TestPrintStats(t *testing.T) {
 				{"c": "c"},
 			},
 			selected: []string{"c"},
-			want: "Column  Value  Frequency\n" +
-				"------  -----  ---------\n" +
-				"c       a      1/3\n" +
-				"c       b      1/3\n" +
-				"c       c      1/3\n" +
-				"\n" +
-				"Unique  Column  Values\n" +
-				"------  ------  -------------------\n" +
-				"3       c       a (1), b (1), c (1)\n",
+			want: "Cardinality  Column  Values\n" +
+				"-----------  ------  -------------------\n" +
+				"3            c       a (1), b (1), c (1)\n",
 		},
 		{
 			name: "missing keys count as null",
@@ -263,25 +251,19 @@ func TestPrintStats(t *testing.T) {
 				{"a": 1},
 			},
 			selected: []string{"a", "b"},
-			want: "Column  Value  Frequency\n" +
-				"------  -----  ---------\n" +
-				"b       null   3/3\n" +
-				"a       1      2/3\n" +
-				"a       2      1/3\n" +
-				"\n" +
-				"Unique  Column  Values\n" +
-				"------  ------  ------------\n" +
-				"1       b       null (3)\n" +
-				"2       a       1 (2), 2 (1)\n",
+			want: "Cardinality  Column  Values\n" +
+				"-----------  ------  ------------\n" +
+				"1            b       null (3)\n" +
+				"2            a       1 (2), 2 (1)\n",
 		},
 		{
-			name:     "zero rows skips the value-frequency table",
+			name:     "zero rows produces only the header",
 			rows:     nil,
 			selected: []string{"a", "b"},
-			want: "Unique  Column  Values\n" +
-				"------  ------  ------\n" +
-				"0       a       \n" +
-				"0       b       \n",
+			want: "Cardinality  Column  Values\n" +
+				"-----------  ------  ------\n" +
+				"0            a       \n" +
+				"0            b       \n",
 		},
 		{
 			name: "rows sorted by unique-value count ascending",
@@ -291,38 +273,10 @@ func TestPrintStats(t *testing.T) {
 				{"low": "x", "high": "c"},
 			},
 			selected: []string{"high", "low"},
-			want: "Column  Value  Frequency\n" +
-				"------  -----  ---------\n" +
-				"low     x      3/3\n" +
-				"high    a      1/3\n" +
-				"high    b      1/3\n" +
-				"high    c      1/3\n" +
-				"\n" +
-				"Unique  Column  Values\n" +
-				"------  ------  -------------------\n" +
-				"1       low     x (3)\n" +
-				"3       high    a (1), b (1), c (1)\n",
-		},
-		{
-			name: "value-frequency cross-column sort: dominant non-100% surfaces above singletons",
-			rows: []row{
-				{"role": "web", "status": "up"},
-				{"role": "web", "status": "up"},
-				{"role": "web", "status": "down"},
-				{"role": "db", "status": "up"},
-			},
-			selected: []string{"role", "status"},
-			want: "Column  Value  Frequency\n" +
-				"------  -----  ---------\n" +
-				"role    web    3/4\n" +
-				"status  up     3/4\n" +
-				"role    db     1/4\n" +
-				"status  down   1/4\n" +
-				"\n" +
-				"Unique  Column  Values\n" +
-				"------  ------  ----------------\n" +
-				"2       role    web (3), db (1)\n" +
-				"2       status  up (3), down (1)\n",
+			want: "Cardinality  Column  Values\n" +
+				"-----------  ------  -------------------\n" +
+				"1            low     x (3)\n" +
+				"3            high    a (1), b (1), c (1)\n",
 		},
 	}
 	for _, tt := range tests {
