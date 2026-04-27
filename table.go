@@ -235,8 +235,8 @@ func printStats(w io.Writer, rows []row, selected []string, excluded []string, h
 		}
 		statsRows = append(statsRows, row{
 			"Cardinality": len(order),
-			"Column": c,
-			"Values": strings.Join(parts, ", "),
+			"Column":      c,
+			"Values":      strings.Join(parts, ", "),
 		})
 	}
 	sort.SliceStable(statsRows, func(i, j int) bool {
@@ -287,8 +287,8 @@ func buildValueFrequencyRows(rows []row, cols []string) []row {
 	out := make([]row, 0, len(entries))
 	for _, e := range entries {
 		out = append(out, row{
-			"Column":    e.col,
-			"Value":     e.value,
+			"Column":   e.col,
+			"Value":    e.value,
 			"Coverage": fmt.Sprintf("%d/%d", e.count, total),
 		})
 	}

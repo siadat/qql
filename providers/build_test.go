@@ -45,10 +45,10 @@ func mustParseYAML(t *testing.T, s string) any {
 
 func TestBuildRows(t *testing.T) {
 	tests := []struct {
-		name     string
+		name   string
 		prefix string
-		input    string
-		want     []map[string]any
+		input  string
+		want   []map[string]any
 	}{
 		{
 			name: "flat map (default path)",
@@ -127,7 +127,7 @@ func TestBuildRows(t *testing.T) {
 			},
 		},
 		{
-			name:     "explicit single-wildcard path",
+			name:   "explicit single-wildcard path",
 			prefix: "*",
 			input: `
 				alice:
@@ -141,7 +141,7 @@ func TestBuildRows(t *testing.T) {
 			},
 		},
 		{
-			name:     "two wildcards capture key_capture_1 and key",
+			name:   "two wildcards capture key_capture_1 and key",
 			prefix: "*.servers.*",
 			input: `
 				region-a:
@@ -159,7 +159,7 @@ func TestBuildRows(t *testing.T) {
 			},
 		},
 		{
-			name:     "three wildcards capture key_capture_1 key_capture_2 key",
+			name:   "three wildcards capture key_capture_1 key_capture_2 key",
 			prefix: "*.*.*",
 			input: `
 				a:
@@ -175,7 +175,7 @@ func TestBuildRows(t *testing.T) {
 			},
 		},
 		{
-			name:     "literal path with no wildcards yields one row",
+			name:   "literal path with no wildcards yields one row",
 			prefix: "alice.address",
 			input: `
 				alice:
@@ -191,7 +191,7 @@ func TestBuildRows(t *testing.T) {
 			},
 		},
 		{
-			name:     "wildcard mixed with literal",
+			name:   "wildcard mixed with literal",
 			prefix: "regions.*.cpu",
 			input: `
 				regions:
@@ -206,7 +206,7 @@ func TestBuildRows(t *testing.T) {
 			},
 		},
 		{
-			name:     "non-matching branches silently skipped",
+			name:   "non-matching branches silently skipped",
 			prefix: "*.servers.*",
 			input: `
 				region-a:
@@ -222,7 +222,7 @@ func TestBuildRows(t *testing.T) {
 			},
 		},
 		{
-			name:     "path matches nothing yields empty",
+			name:   "path matches nothing yields empty",
 			prefix: "*.does-not-exist.*",
 			input: `
 				alice:

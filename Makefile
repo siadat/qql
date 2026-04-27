@@ -7,6 +7,9 @@ test:
 	go vet ./...
 	go test -v -count=1 ./...
 
+fmt:
+	rg -t go . -l | xargs -i gofmt -w {}
+
 # Pre-release sanity checks. Runs as a prerequisite of release targets, but is
 # also usable standalone to dry-run the guards: `make check-version`.
 check-version:
