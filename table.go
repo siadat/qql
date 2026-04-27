@@ -166,7 +166,7 @@ func partitionConstantCols(rows []row, cols []string) (variable, constant []stri
 }
 
 // printTableWithSummary prints the main table with constant columns stripped,
-// followed by a blank line and a small "Column | Value | Frequency" table
+// followed by a blank line and a small "Coverage | Column | Value" table
 // for the columns whose value was identical across every row.
 //
 // The point is to keep the main table narrow enough to fit common terminal
@@ -197,7 +197,7 @@ func printTableWithSummary(w io.Writer, rows []row, selected []string, excluded 
 	// frequency table, so passing only those cols is equivalent to filtering
 	// the full table to count == len(rows).
 	summaryRows := buildValueFrequencyRows(rows, constant)
-	printTable(w, summaryRows, []string{"Column", "Value", "Frequency"}, nil, header)
+	printTable(w, summaryRows, []string{"Coverage", "Column", "Value"}, nil, header)
 }
 
 // printStats replaces the main table with a per-column breakdown of the
@@ -289,7 +289,7 @@ func buildValueFrequencyRows(rows []row, cols []string) []row {
 		out = append(out, row{
 			"Column":    e.col,
 			"Value":     e.value,
-			"Frequency": fmt.Sprintf("%d/%d", e.count, total),
+			"Coverage": fmt.Sprintf("%d/%d", e.count, total),
 		})
 	}
 	return out

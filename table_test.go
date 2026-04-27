@@ -191,9 +191,9 @@ func TestPrintTableWithSummary(t *testing.T) {
 				"tokyo  8\n" +
 				"osaka  32\n" +
 				"\n" +
-				"Column  Value  Frequency\n" +
-				"------  -----  ---------\n" +
-				"region  asia   2/2\n",
+				"Coverage  Column  Value\n" +
+				"--------  ------  -----\n" +
+				"2/2       region  asia\n",
 		},
 		{
 			name: "no constant columns prints only main table",
@@ -213,10 +213,10 @@ func TestPrintTableWithSummary(t *testing.T) {
 				{"a": 1, "b": "x"},
 			},
 			selected: []string{"a", "b"},
-			want: "Column  Value  Frequency\n" +
-				"------  -----  ---------\n" +
-				"a       1      1/1\n" +
-				"b       x      1/1\n",
+			want: "Coverage  Column  Value\n" +
+				"--------  ------  -----\n" +
+				"1/1       a       1\n" +
+				"1/1       b       x\n",
 		},
 	}
 	for _, tt := range tests {
