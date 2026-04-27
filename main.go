@@ -174,7 +174,7 @@ func main() {
 	if trunc != nil {
 		_ = trunc.Flush()
 		if trunc.Truncated() {
-			fmt.Fprintf(os.Stderr, "(Some lines were clipped to terminal width %d. Pass --no-truncate or widen the terminal to see the full output.)\n", trunc.width)
+			fmt.Fprintf(os.Stderr, "Output was clipped to fit terminal width %d.\nPass --no-truncate or widen the terminal for the full output.\n", trunc.width)
 		}
 	}
 }
