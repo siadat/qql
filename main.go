@@ -15,7 +15,7 @@ func main() {
 	var outFlag string
 	flag.StringVar(&outFlag, "out", "table", "output format: table, json, jsonl")
 	flag.StringVar(&outFlag, "o", "table", "output format (shorthand for --out)")
-	noHeader := flag.Bool("no-header", false, "hide the header row and separator in table output")
+	noHeader := flag.Bool("no-header", false, "hide the header row, separator, and trailing row count in table output")
 	summary := flag.Bool("summary", false, "shrink the table by hoisting columns whose value is identical across every row into a small summary table printed below, so the main table is narrower and fits more terminals")
 	stats := flag.Bool("stats", false, "instead of the rows, print a per-column breakdown: unique-value count and a 'value (freq)' list sorted by frequency, useful for sizing up a result set without scrolling")
 	noTruncate := flag.Bool("no-truncate", false, "do not clip lines to terminal width. by default, when stdout is an interactive terminal, table output is truncated so wrapping does not garble the layout")
@@ -186,6 +186,9 @@ func main() {
 			default:
 				printTable(out, rows, selected, excluded, !*noHeader)
 			}
+			if !*noHeader {
+				fmt.Fprintln(out, formatRowCount(len(rows)))
+			}
 			printed = true
 		}
 	case "json":
@@ -203,6 +206,13 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Output was clipped to fit terminal width %d.\nPass --no-truncate or widen the terminal for the full output.\n", trunc.width)
 		}
 	}
+}
+
+func formatRowCount(n int) string {
+	if n == 1 {
+		return "1 row"
+	}
+	return fmt.Sprintf("%d rows", n)
 }
 
 func flattenGroups(groups [][]row) []row {
