@@ -202,6 +202,12 @@ func main() {
 			}
 			printed = true
 		}
+		// All groups were empty (e.g., the WHERE filtered every row out).
+		// Print a single row-count line so the user can tell the query ran
+		// and matched nothing, instead of seeing an empty stdout.
+		if !printed && !*noHeader {
+			fmt.Fprintln(out, formatRowCount(0))
+		}
 	case "json":
 		printJSON(out, flattenGroups(groups), selected, excluded)
 	case "jsonl":
