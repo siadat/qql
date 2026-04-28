@@ -43,7 +43,7 @@ func main() {
 	}
 	paths = append(paths, args[1:]...)
 
-	var rows []row
+	var groups [][]row
 	if with.Provider != "" {
 		// Provider-driven loads run once per query, not once per path. External
 		// providers receive every path via ctx.Files and decide how to
@@ -61,7 +61,7 @@ func main() {
 			Offset:   offset,
 		}
 		var err error
-		rows, err = providers.Load(ctx)
+		groups, err = providers.Load(ctx)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -83,54 +83,72 @@ func main() {
 				Limit:    limit,
 				Offset:   offset,
 			}
-			pathRows, err := providers.Load(ctx)
+			pathGroups, err := providers.Load(ctx)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				os.Exit(1)
 			}
-			rows = append(rows, pathRows...)
+			groups = append(groups, pathGroups...)
+		}
+		// Multiple positional files keep their original "concatenate into one
+		// table" semantics: passing N files is treated as one combined source.
+		// Multi-doc YAML still splits, but only when its file is the sole
+		// source — that's the case where the `---` separators are the user's
+		// only signal for how to group output.
+		if len(paths) > 1 {
+			groups = [][]row{flattenGroups(groups)}
 		}
 	}
 
-	if pred != nil {
-		filtered := rows[:0]
-		for _, r := range rows {
-			if pred.Eval(r) {
-				filtered = append(filtered, r)
+	// WHERE/ORDER BY/LIMIT/OFFSET/COUNT apply per group so each table is a
+	// self-contained query result; multi-doc YAML thus yields independent
+	// "top N" tables rather than a global one. json/jsonl re-flatten below.
+	for i, rows := range groups {
+		if pred != nil {
+			filtered := rows[:0]
+			for _, r := range rows {
+				if pred.Eval(r) {
+					filtered = append(filtered, r)
+				}
+			}
+			rows = filtered
+		}
+
+		if isCount {
+			rows = []row{{"count": len(rows)}}
+		}
+
+		if len(orderBy) > 0 {
+			sort.SliceStable(rows, func(i, j int) bool {
+				for _, term := range orderBy {
+					c := parser.CompareValues(rows[i][term.Col], rows[j][term.Col])
+					if term.Desc {
+						c = -c
+					}
+					if c != 0 {
+						return c < 0
+					}
+				}
+				return false
+			})
+		}
+
+		if offset > 0 {
+			if offset >= len(rows) {
+				rows = nil
+			} else {
+				rows = rows[offset:]
 			}
 		}
-		rows = filtered
+		if limit >= 0 && len(rows) > limit {
+			rows = rows[:limit]
+		}
+
+		groups[i] = rows
 	}
 
 	if isCount {
-		rows = []row{{"count": len(rows)}}
 		selected = []string{"count"}
-	}
-
-	if len(orderBy) > 0 {
-		sort.SliceStable(rows, func(i, j int) bool {
-			for _, term := range orderBy {
-				c := parser.CompareValues(rows[i][term.Col], rows[j][term.Col])
-				if term.Desc {
-					c = -c
-				}
-				if c != 0 {
-					return c < 0
-				}
-			}
-			return false
-		})
-	}
-
-	if offset > 0 {
-		if offset >= len(rows) {
-			rows = nil
-		} else {
-			rows = rows[offset:]
-		}
-	}
-	if limit >= 0 && len(rows) > limit {
-		rows = rows[:limit]
 	}
 
 	if *summary && *stats {
@@ -154,18 +172,28 @@ func main() {
 
 	switch outFlag {
 	case "table":
-		switch {
-		case *stats:
-			printStats(out, rows, selected, excluded, !*noHeader)
-		case *summary:
-			printTableWithSummary(out, rows, selected, excluded, !*noHeader)
-		default:
-			printTable(out, rows, selected, excluded, !*noHeader)
+		printed := false
+		for _, rows := range groups {
+			if len(rows) == 0 {
+				continue
+			}
+			if printed {
+				fmt.Fprintln(out)
+			}
+			switch {
+			case *stats:
+				printStats(out, rows, selected, excluded, !*noHeader)
+			case *summary:
+				printTableWithSummary(out, rows, selected, excluded, !*noHeader)
+			default:
+				printTable(out, rows, selected, excluded, !*noHeader)
+			}
+			printed = true
 		}
 	case "json":
-		printJSON(out, rows, selected, excluded)
+		printJSON(out, flattenGroups(groups), selected, excluded)
 	case "jsonl":
-		printJSONL(out, rows, selected, excluded)
+		printJSONL(out, flattenGroups(groups), selected, excluded)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown output format %q (want table, json, or jsonl)\n", outFlag)
 		os.Exit(2)
@@ -177,6 +205,18 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Output was clipped to fit terminal width %d.\nPass --no-truncate or widen the terminal for the full output.\n", trunc.width)
 		}
 	}
+}
+
+func flattenGroups(groups [][]row) []row {
+	var total int
+	for _, g := range groups {
+		total += len(g)
+	}
+	out := make([]row, 0, total)
+	for _, g := range groups {
+		out = append(out, g...)
+	}
+	return out
 }
 
 func toProviderOrderBy(in []parser.OrderTerm) []providers.OrderTerm {
