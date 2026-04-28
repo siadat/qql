@@ -24,7 +24,7 @@ func Load(ctx Context) ([][]map[string]any, error) {
 		return [][]map[string]any{rows}, nil
 	}
 	if rest, ok := strings.CutPrefix(ctx.Provider, "git:"); ok {
-		rows, err := loadGit(rest, ctx.Prefix)
+		rows, err := loadGit(rest)
 		if err != nil {
 			return nil, err
 		}
@@ -35,13 +35,13 @@ func Load(ctx Context) ([][]map[string]any, error) {
 	}
 	switch ext := strings.ToLower(filepath.Ext(ctx.Source)); ext {
 	case ".json":
-		rows, err := loadJSON(ctx.Source, ctx.Prefix)
+		rows, err := loadJSON(ctx.Source)
 		if err != nil {
 			return nil, err
 		}
 		return [][]map[string]any{rows}, nil
 	case ".yaml", ".yml":
-		return loadYAML(ctx.Source, ctx.Prefix)
+		return loadYAML(ctx.Source)
 	default:
 		return nil, fmt.Errorf("unsupported file extension %q: %s", ext, ctx.Source)
 	}

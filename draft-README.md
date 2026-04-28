@@ -78,9 +78,17 @@ One or more `<column> [ASC|DESC]` terms separated by commas. `ASC` is the defaul
 
 Trailing configuration as a comma-separated list of `<key> = '<value>'` pairs. Recognized keys:
 
-- `prefix = '<glob>'`: extract rows from a nested dot-path. A `*` segment matches any map key and captures it. Literal segments descend without capturing. Non-matching branches are silently skipped. The rightmost `*` becomes the `key` column and carries the full path from the root (e.g. `*.servers` yields `key = "region-a.servers"`). Earlier `*`s become `key_capture_1`, `key_capture_2`, … and carry just the matched key, useful for `WHERE` filtering.
 - `provider = 'git:<repo>'`: read commit rows from the given repository (use `git:.` for the current directory). Columns: `commit`, `author`, `email`, `time`, `subject`. `FROM` and positional paths are ignored.
 - `provider = 'external:<script>'`: replace built-in dispatch with a user-supplied script (see "External providers").
+
+## Input shape
+
+The built-in YAML and JSON loaders auto-detect two shapes for the top-level value:
+
+- **Map**: each top-level key becomes a row, with the key in the `key` column and the value flattened into per-column entries (nested maps use dot paths, list elements use indexed paths).
+- **List**: each top-level element becomes a row, with its 0-based index in the `key` column.
+
+Anything more elaborate (drilling into nested paths, joining files, custom shapes) belongs in an external provider.
 
 ## External providers
 
@@ -95,13 +103,7 @@ $ qql "SELECT key, name, size
        WITH provider = 'external:./examples/providers/fs.py'" ./testdata/
 ```
 
-The bundled `examples/providers/yaml_file_reader.py` reads YAML files and emits each document as a `tree`. qql unfolds it with the same dot-glob prefix used by built-in YAML/JSON loaders:
-
-```
-$ qql "SELECT key, cpu
-       WITH provider = 'external:./examples/providers/yaml_file_reader.py',
-            prefix = '*.servers.*'" testdata/regions.yaml
-```
+The bundled `examples/providers/yaml_file_reader.py` reads YAML files and emits each document as a `tree`. qql unfolds each tree with the same map-or-list rule the built-in loaders use.
 
 ### Protocol
 
@@ -111,7 +113,6 @@ $ qql "SELECT key, cpu
     "version": 1,
     "source": "regions.yaml",
     "files": ["regions.yaml"],
-    "prefix": "*.servers.*",
     "select": ["key", "cpu"],
     "where": "status = 'up' AND cpu >= 16",
     "order_by": [{"col": "cpu", "desc": true}]
@@ -121,7 +122,7 @@ $ qql "SELECT key, cpu
 
 - **stdout**: JSONL. One envelope per line of the form `{"type": "row" | "tree", "value": ...}`:
   - `"type": "row"`: `value` is a flat object whose keys are columns. qql appends it to the result set unchanged.
-  - `"type": "tree"`: `value` is a nested document (map/list/scalar). qql unfolds it via the WITH `prefix` glob the same way it would a YAML or JSON file.
+  - `"type": "tree"`: `value` is a nested document (map/list/scalar). qql unfolds it the same way it would a YAML or JSON file (one row per top-level entry).
 
   Empty lines and `#`-prefixed comment lines are skipped. Lines that aren't valid envelopes are logged to stderr and dropped.
 

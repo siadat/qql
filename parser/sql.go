@@ -225,7 +225,6 @@ type OrderTerm struct {
 // WithOptions holds the configuration knobs parsed from a trailing WITH clause.
 // All fields are optional; an empty value means the user did not set that key.
 type WithOptions struct {
-	Prefix   string
 	Provider string
 }
 
@@ -345,10 +344,10 @@ func parseNonNegativeInt(p *parseState, clauseName string) (int, error) {
 }
 
 // parseWith reads a comma-separated list of `key = string` pairs after the
-// WITH keyword. Recognized keys: `prefix` (path glob for nested rows) and
-// `provider` (e.g. `external:./script.py` for user-supplied row sources).
-// Unknown or duplicate keys error. Empty fields in the returned WithOptions
-// mean the user did not set that key.
+// WITH keyword. The only recognized key is `provider` (e.g.
+// `external:./script.py` for user-supplied row sources). Unknown or duplicate
+// keys error. Empty fields in the returned WithOptions mean the user did not
+// set that key.
 func parseWith(p *parseState) (opts WithOptions, err error) {
 	seen := map[string]bool{}
 	for {
@@ -369,8 +368,6 @@ func parseWith(p *parseState) (opts WithOptions, err error) {
 			return WithOptions{}, fmt.Errorf("duplicate WITH key %q at offset %d", k.text, k.pos)
 		}
 		switch key {
-		case "prefix":
-			opts.Prefix = v.text
 		case "provider":
 			opts.Provider = v.text
 		default:

@@ -74,7 +74,6 @@ func TestLoadExternalPayloadDelivered(t *testing.T) {
 	}
 	ctx := Context{
 		Source: "regions.yaml",
-		Prefix: "*.servers.*",
 		Where:  "cpu > 8",
 	}
 	rows, err := loadExternal("testdata/echo_stdin.sh", ctx)
@@ -91,8 +90,8 @@ func TestLoadExternalPayloadDelivered(t *testing.T) {
 	if r["source"] != "regions.yaml" {
 		t.Errorf("source: got %v, want regions.yaml", r["source"])
 	}
-	if r["prefix"] != "*.servers.*" {
-		t.Errorf("prefix: got %v, want *.servers.*", r["prefix"])
+	if r["has_prefix"] != false {
+		t.Errorf("prefix should not be in the request payload anymore, has_prefix=%v", r["has_prefix"])
 	}
 	if r["where"] != "cpu > 8" {
 		t.Errorf("where: got %v, want cpu > 8", r["where"])
@@ -108,7 +107,7 @@ func TestReadExternalRowsSkipsBlankAndComment(t *testing.T) {
 # another comment
 {"type": "row", "value": {"b": 2}}
 `)
-	rows, err := readExternalRows(in, "")
+	rows, err := readExternalRows(in)
 	if err != nil {
 		t.Fatalf("readExternalRows: %v", err)
 	}
@@ -123,26 +122,30 @@ func TestReadExternalRowsSkipsBlankAndComment(t *testing.T) {
 
 func TestReadExternalRowsTreeExpands(t *testing.T) {
 	in := strings.NewReader(`
-{"type": "tree", "value": {"region-a": {"servers": {"web1": {"cpu": 8}, "db1": {"cpu": 32}}}}}
-{"type": "tree", "value": {"region-b": {"servers": {"web1": {"cpu": 4}}}}}
+{"type": "tree", "value": {"alice": {"age": 30}, "bob": {"age": 25}}}
+{"type": "tree", "value": [{"x": 1}, {"x": 2}]}
 `)
-	rows, err := readExternalRows(in, "*.servers.*")
+	rows, err := readExternalRows(in)
 	if err != nil {
 		t.Fatalf("readExternalRows: %v", err)
 	}
-	if len(rows) != 3 {
-		t.Fatalf("got %d rows, want 3: %+v", len(rows), rows)
+	if len(rows) != 4 {
+		t.Fatalf("got %d rows, want 4: %+v", len(rows), rows)
 	}
-	keys := make(map[string]json.Number)
+	keys := make(map[string]any)
 	for _, r := range rows {
 		k, _ := r["key"].(string)
-		cpu, _ := r["cpu"].(json.Number)
-		keys[k] = cpu
+		if age, ok := r["age"]; ok {
+			keys[k] = age
+		} else if x, ok := r["x"]; ok {
+			keys[k] = x
+		}
 	}
-	want := map[string]json.Number{
-		"region-a.servers.web1": json.Number("8"),
-		"region-a.servers.db1":  json.Number("32"),
-		"region-b.servers.web1": json.Number("4"),
+	want := map[string]any{
+		"alice": json.Number("30"),
+		"bob":   json.Number("25"),
+		"0":     json.Number("1"),
+		"1":     json.Number("2"),
 	}
 	if !reflect.DeepEqual(keys, want) {
 		t.Errorf("got %+v, want %+v", keys, want)
@@ -151,7 +154,7 @@ func TestReadExternalRowsTreeExpands(t *testing.T) {
 
 func TestReadExternalRowsRejectsBareRow(t *testing.T) {
 	in := strings.NewReader(`{"key": "alice"}` + "\n")
-	rows, err := readExternalRows(in, "")
+	rows, err := readExternalRows(in)
 	if err != nil {
 		t.Fatalf("readExternalRows: %v", err)
 	}
@@ -165,7 +168,7 @@ func TestReadExternalRowsMixedRowAndTree(t *testing.T) {
 {"type": "row", "value": {"key": "passthrough", "n": 1}}
 {"type": "tree", "value": {"alice": {"age": 30}}}
 `)
-	rows, err := readExternalRows(in, "*")
+	rows, err := readExternalRows(in)
 	if err != nil {
 		t.Fatalf("readExternalRows: %v", err)
 	}

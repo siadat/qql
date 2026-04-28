@@ -21,7 +21,6 @@ type externalRequest struct {
 	Version int         `json:"version"`
 	Source  string      `json:"source,omitempty"`
 	Files   []string    `json:"files,omitempty"`
-	Prefix  string      `json:"prefix,omitempty"`
 	Select  []string    `json:"select,omitempty"`
 	Where   string      `json:"where,omitempty"`
 	OrderBy []OrderTerm `json:"order_by,omitempty"`
@@ -50,7 +49,6 @@ func loadExternal(scriptPath string, ctx Context) ([]map[string]any, error) {
 		Version: 1,
 		Source:  ctx.Source,
 		Files:   ctx.Files,
-		Prefix:  ctx.Prefix,
 		Select:  ctx.Select,
 		Where:   ctx.Where,
 		OrderBy: ctx.OrderBy,
@@ -72,7 +70,7 @@ func loadExternal(scriptPath string, ctx Context) ([]map[string]any, error) {
 		return nil, fmt.Errorf("external %s: start: %w", scriptPath, err)
 	}
 
-	rows, scanErr := readExternalRows(stdout, ctx.Prefix)
+	rows, scanErr := readExternalRows(stdout)
 
 	if waitErr := cmd.Wait(); waitErr != nil {
 		return nil, fmt.Errorf("external %s exited with error: %w", scriptPath, waitErr)
@@ -88,12 +86,13 @@ func loadExternal(scriptPath string, ctx Context) ([]map[string]any, error) {
 // {"type": "row"|"tree", "value": ...}:
 //
 //   - "row" passes value through as a single row.
-//   - "tree" feeds value to rowsFromTree(value, prefix), expanding it the
-//     same way the built-in YAML/JSON loaders do.
+//   - "tree" feeds value to rowsFromTree(value), expanding it the same way
+//     the built-in YAML/JSON loaders do (one row per top-level entry, with
+//     the map key or list index in the `key` column).
 //
 // Lines that don't match either shape are logged to stderr and skipped, so
 // one bad line can't take down the whole query.
-func readExternalRows(r io.Reader, prefix string) ([]map[string]any, error) {
+func readExternalRows(r io.Reader) ([]map[string]any, error) {
 	var rows []map[string]any
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 64*1024), 8*1024*1024)
@@ -124,7 +123,7 @@ func readExternalRows(r io.Reader, prefix string) ([]map[string]any, error) {
 			}
 			rows = append(rows, row)
 		case "tree":
-			expanded, err := rowsFromTree(value, prefix)
+			expanded, err := rowsFromTree(value)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "qql: skipping external tree line %q: %v\n", line, err)
 				continue

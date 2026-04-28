@@ -3,7 +3,7 @@
 
 Wire protocol (see README): qql sends a single JSON object on stdin and reads
 JSONL envelopes on stdout, each shaped {"type": "row"|"tree", "value": ...}.
-Stderr passes through to the user. Hints (where, order_by, select, prefix) are
+Stderr passes through to the user. Hints (where, order_by, select) are
 optional — qql re-applies them to whatever rows we emit.
 """
 

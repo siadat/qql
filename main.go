@@ -52,7 +52,6 @@ func main() {
 		ctx := providers.Context{
 			Source:   sqlSource,
 			Files:    paths,
-			Prefix:   with.Prefix,
 			Provider: with.Provider,
 			Select:   selected,
 			Where:    whereRaw,
@@ -75,7 +74,6 @@ func main() {
 			ctx := providers.Context{
 				Source:   path,
 				Files:    paths,
-				Prefix:   with.Prefix,
 				Provider: with.Provider,
 				Select:   selected,
 				Where:    whereRaw,

@@ -9,7 +9,7 @@ print(json.dumps({"type": "row", "value": {
     "key": "stdin",
     "version": ctx.get("version"),
     "source": ctx.get("source", ""),
-    "prefix": ctx.get("prefix", ""),
+    "has_prefix": "prefix" in ctx,
     "where": ctx.get("where", ""),
 }}))
 '

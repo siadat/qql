@@ -12,7 +12,7 @@ import (
 // loadYAML decodes every document in the file (separated by `---`) and returns
 // one row group per document. Truly empty documents (e.g. between consecutive
 // `---` markers) are skipped. Callers render one table per group.
-func loadYAML(path, prefix string) ([][]map[string]any, error) {
+func loadYAML(path string) ([][]map[string]any, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -32,7 +32,7 @@ func loadYAML(path, prefix string) ([][]map[string]any, error) {
 		if v == nil {
 			continue
 		}
-		rows, err := rowsFromTree(v, prefix)
+		rows, err := rowsFromTree(v)
 		if err != nil {
 			return nil, err
 		}

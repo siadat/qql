@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Reference qql external provider: reads YAML files and emits each document
-as a JSONL "tree" envelope, leaving qql to apply its prefix-glob unfolding.
+as a JSONL "tree" envelope, leaving qql to unfold each tree with its built-in
+"one row per top-level entry" rule.
 
 Wire protocol (see README): qql sends a single JSON object on stdin and reads
 JSONL envelopes on stdout. Each line must be of the form
-{"type": "row"|"tree", "value": ...}. We always emit "tree" so the WITH prefix
-controls how each document is turned into rows.
+{"type": "row"|"tree", "value": ...}.
 
 Multi-document YAML (`---` separators) emits one envelope per document.
 """

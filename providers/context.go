@@ -8,17 +8,16 @@ type OrderTerm struct {
 }
 
 // Context carries everything a provider may want to know about the current
-// query. Built-in providers only look at Source and Prefix; external providers
-// receive the full bundle as a hint payload (qql still re-applies WHERE,
-// ORDER BY, LIMIT, and OFFSET to whatever rows the provider returns, so
-// providers are free to ignore any field they don't understand).
+// query. Built-in providers only look at Source; external providers receive
+// the full bundle as a hint payload (qql still re-applies WHERE, ORDER BY,
+// LIMIT, and OFFSET to whatever rows the provider returns, so providers are
+// free to ignore any field they don't understand).
 //
 // Limit uses -1 to mean "no LIMIT clause"; 0 is a valid limit meaning "return
 // zero rows". Offset defaults to 0 (no rows skipped).
 type Context struct {
 	Source   string
 	Files    []string
-	Prefix   string
 	Provider string
 	Select   []string
 	Where    string
