@@ -4,25 +4,45 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"sort"
 )
 
 type row = map[string]any
 
 type WhereExpr interface {
 	Eval(r row) bool
+	cols(out map[string]struct{})
+}
+
+// ReferencedCols returns the column identifiers used anywhere in the
+// predicate, sorted ascending. Callers use it to surface a clear error when
+// the user types `WHERE staus = 'up'` against rows that only have a `status`
+// column, instead of silently filtering everything away.
+func ReferencedCols(e WhereExpr) []string {
+	out := map[string]struct{}{}
+	e.cols(out)
+	cols := make([]string, 0, len(out))
+	for k := range out {
+		cols = append(cols, k)
+	}
+	sort.Strings(cols)
+	return cols
 }
 
 type orExpr struct{ left, right WhereExpr }
 
-func (e *orExpr) Eval(r row) bool { return e.left.Eval(r) || e.right.Eval(r) }
+func (e *orExpr) Eval(r row) bool              { return e.left.Eval(r) || e.right.Eval(r) }
+func (e *orExpr) cols(out map[string]struct{}) { e.left.cols(out); e.right.cols(out) }
 
 type andExpr struct{ left, right WhereExpr }
 
-func (e *andExpr) Eval(r row) bool { return e.left.Eval(r) && e.right.Eval(r) }
+func (e *andExpr) Eval(r row) bool              { return e.left.Eval(r) && e.right.Eval(r) }
+func (e *andExpr) cols(out map[string]struct{}) { e.left.cols(out); e.right.cols(out) }
 
 type notExpr struct{ inner WhereExpr }
 
-func (e *notExpr) Eval(r row) bool { return !e.inner.Eval(r) }
+func (e *notExpr) Eval(r row) bool              { return !e.inner.Eval(r) }
+func (e *notExpr) cols(out map[string]struct{}) { e.inner.cols(out) }
 
 type cmpOp int
 
@@ -37,29 +57,33 @@ const (
 
 type operand interface {
 	resolve(r row) any
+	cols(out map[string]struct{})
 }
 
 type identOperand struct{ name string }
 
-func (o *identOperand) resolve(r row) any {
-	return r[o.name]
-}
+func (o *identOperand) resolve(r row) any            { return r[o.name] }
+func (o *identOperand) cols(out map[string]struct{}) { out[o.name] = struct{}{} }
 
 type numLit struct{ v float64 }
 
-func (o *numLit) resolve(r row) any { return o.v }
+func (o *numLit) resolve(r row) any          { return o.v }
+func (o *numLit) cols(_ map[string]struct{}) {}
 
 type strLit struct{ v string }
 
-func (o *strLit) resolve(r row) any { return o.v }
+func (o *strLit) resolve(r row) any          { return o.v }
+func (o *strLit) cols(_ map[string]struct{}) {}
 
 type boolLit struct{ v bool }
 
-func (o *boolLit) resolve(r row) any { return o.v }
+func (o *boolLit) resolve(r row) any          { return o.v }
+func (o *boolLit) cols(_ map[string]struct{}) {}
 
 type nullLit struct{}
 
-func (o *nullLit) resolve(r row) any { return nil }
+func (o *nullLit) resolve(r row) any          { return nil }
+func (o *nullLit) cols(_ map[string]struct{}) {}
 
 type matchesExpr struct {
 	left operand
@@ -80,6 +104,8 @@ func (e *matchesExpr) Eval(r row) bool {
 	}
 	return e.re.MatchString(s)
 }
+
+func (e *matchesExpr) cols(out map[string]struct{}) { e.left.cols(out) }
 
 type cmpExpr struct {
 	op          cmpOp
@@ -126,6 +152,8 @@ func (e *cmpExpr) Eval(r row) bool {
 	}
 	return false
 }
+
+func (e *cmpExpr) cols(out map[string]struct{}) { e.left.cols(out); e.right.cols(out) }
 
 // CompareValues returns -1, 0, or 1 in a total order across qql's runtime types.
 // Values of different types are ordered by type rank (nil < bool < number < string < other);

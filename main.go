@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/siadat/qql/parser"
 	"github.com/siadat/qql/providers"
@@ -96,6 +97,11 @@ func main() {
 		if len(paths) > 1 {
 			groups = [][]row{flattenGroups(groups)}
 		}
+	}
+
+	if err := validateColumns(groups, selected, excluded, pred, orderBy); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
 	}
 
 	// WHERE/ORDER BY/LIMIT/OFFSET/COUNT apply per group so each table is a
@@ -213,6 +219,70 @@ func formatRowCount(n int) string {
 		return "1 row"
 	}
 	return fmt.Sprintf("%d rows", n)
+}
+
+// validateColumns reports the first SELECT/EXCLUDE/WHERE/ORDER BY identifier
+// that doesn't appear in any loaded row, so a typo like `WHERE staus = 'up'`
+// surfaces a clear error instead of silently filtering everything away.
+//
+// The check uses the union across all groups: if any group has the column,
+// it's accepted (multi-doc YAML often mixes schemas, and we'd rather not
+// reject a column that exists in some docs). If there are no rows at all,
+// validation is skipped — there's nothing to display anyway, so erroring
+// would just add noise on top of an empty result.
+func validateColumns(groups [][]row, selected, excluded []string, pred parser.WhereExpr, orderBy []parser.OrderTerm) error {
+	available := map[string]struct{}{}
+	for _, g := range groups {
+		for _, r := range g {
+			for k := range r {
+				available[k] = struct{}{}
+			}
+		}
+	}
+	if len(available) == 0 {
+		return nil
+	}
+
+	check := func(col, source string) error {
+		if _, ok := available[col]; ok {
+			return nil
+		}
+		return fmt.Errorf("column %q referenced in %s does not exist\navailable columns: %s",
+			col, source, strings.Join(sortedKeys(available), ", "))
+	}
+
+	for _, c := range selected {
+		if err := check(c, "SELECT"); err != nil {
+			return err
+		}
+	}
+	for _, c := range excluded {
+		if err := check(c, "EXCLUDE"); err != nil {
+			return err
+		}
+	}
+	if pred != nil {
+		for _, c := range parser.ReferencedCols(pred) {
+			if err := check(c, "WHERE"); err != nil {
+				return err
+			}
+		}
+	}
+	for _, t := range orderBy {
+		if err := check(t.Col, "ORDER BY"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func sortedKeys(m map[string]struct{}) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func flattenGroups(groups [][]row) []row {
