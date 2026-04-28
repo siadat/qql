@@ -14,73 +14,75 @@ func TestEval(t *testing.T) {
 	}
 
 	cases := []struct {
-		name string
-		expr string
-		want []string
+		name    string
+		expr    string
+		want    []string
+		wantErr bool // true if Eval should report a type-mismatch on at least one row
 	}{
-		{"eq num", "age = 30", []string{"alice"}},
-		{"neq num", "age != 30", []string{"bob", "carol"}},
-		{"lt num", "age < 30", []string{"bob"}},
-		{"lte num", "age <= 30", []string{"alice", "bob"}},
-		{"gt num", "age > 30", []string{"carol"}},
-		{"gte num", "age >= 30", []string{"alice", "carol"}},
-		{"float compare", "score > 95", []string{"alice"}},
+		{"eq num", "age = 30", []string{"alice"}, false},
+		{"neq num", "age != 30", []string{"bob", "carol"}, false},
+		{"lt num", "age < 30", []string{"bob"}, false},
+		{"lte num", "age <= 30", []string{"alice", "bob"}, false},
+		{"gt num", "age > 30", []string{"carol"}, false},
+		{"gte num", "age >= 30", []string{"alice", "carol"}, false},
+		{"float compare", "score > 95", []string{"alice"}, false},
 
-		{"eq str", `address.city = "SF"`, []string{"alice"}},
-		{"single-quoted str", `address.city = 'SF'`, []string{"alice"}},
-		{"neq str", `address.city != "SF"`, []string{"bob", "carol"}},
-		{"lt str", `address.city < "M"`, []string{"carol"}},
+		{"eq str", `address.city = "SF"`, []string{"alice"}, false},
+		{"single-quoted str", `address.city = 'SF'`, []string{"alice"}, false},
+		{"neq str", `address.city != "SF"`, []string{"bob", "carol"}, false},
+		{"lt str", `address.city < "M"`, []string{"carol"}, false},
 
-		{"key eq", `key = "alice"`, []string{"alice"}},
+		{"key eq", `key = "alice"`, []string{"alice"}, false},
 
-		{"bool true", "active = true", []string{"alice", "carol"}},
-		{"bool false", "active = false", []string{"bob"}},
-		{"bool neq", "active != true", []string{"bob"}},
+		{"bool true", "active = true", []string{"alice", "carol"}, false},
+		{"bool false", "active = false", []string{"bob"}, false},
+		{"bool neq", "active != true", []string{"bob"}, false},
 
-		{"dot path index", `tags.0 = "eng"`, []string{"alice"}},
+		{"dot path index", `tags.0 = "eng"`, []string{"alice"}, false},
 
-		{"missing col vs val", "tags.0 = 1", nil},
-		{"missing col != val", `tags.0 != "eng"`, nil},
-		{"missing col is null", "tags.0 = null", []string{"bob", "carol"}},
-		{"missing col not null", "tags.0 != null", []string{"alice"}},
-		{"explicit null is null", "middle_name = null", []string{"alice", "bob", "carol"}},
-		{"NOT eq null on missing", "NOT (tags.0 = 5)", []string{"alice", "bob", "carol"}},
+		// alice has tags.0 = "eng" (string), so comparing to 1 (number)
+		// surfaces a type-mismatch error. Rows where tags.0 is missing
+		// would silently fall through, but alice is iterated first.
+		{"missing col vs val", "tags.0 = 1", nil, true},
+		{"missing col is null", "tags.0 = null", []string{"bob", "carol"}, false},
+		{"missing col not null", "tags.0 != null", []string{"alice"}, false},
+		{"explicit null is null", "middle_name = null", []string{"alice", "bob", "carol"}, false},
 
-		{"type mismatch num/str", `age = "thirty"`, nil},
-		{"type mismatch str/num", `address.city = 5`, nil},
-		{"type mismatch str/bool", `address.city = true`, nil},
+		{"type mismatch num/str", `age = "thirty"`, nil, true},
+		{"type mismatch str/num", `address.city = 5`, nil, true},
+		{"type mismatch str/bool", `address.city = true`, nil, true},
 
-		{"AND", `age >= 30 AND active = true`, []string{"alice", "carol"}},
-		{"OR", `age = 25 OR age = 41`, []string{"bob", "carol"}},
-		{"AND-OR precedence", `age = 25 OR age >= 30 AND active = true`, []string{"alice", "bob", "carol"}},
-		{"parens override precedence", `(age = 25 OR age >= 30) AND active = true`, []string{"alice", "carol"}},
-		{"NOT NOT", "NOT NOT age = 30", []string{"alice"}},
-		{"NOT around AND", "NOT (active = true AND age >= 30)", []string{"bob"}},
-		{"case-insensitive keywords", "age = 30 AnD active = TRUE", []string{"alice"}},
+		{"AND", `age >= 30 AND active = true`, []string{"alice", "carol"}, false},
+		{"OR", `age = 25 OR age = 41`, []string{"bob", "carol"}, false},
+		{"AND-OR precedence", `age = 25 OR age >= 30 AND active = true`, []string{"alice", "bob", "carol"}, false},
+		{"parens override precedence", `(age = 25 OR age >= 30) AND active = true`, []string{"alice", "carol"}, false},
+		{"NOT NOT", "NOT NOT age = 30", []string{"alice"}, false},
+		{"NOT around AND", "NOT (active = true AND age >= 30)", []string{"bob"}, false},
+		{"case-insensitive keywords", "age = 30 AnD active = TRUE", []string{"alice"}, false},
 
-		{"literal on left", "30 = age", []string{"alice"}},
-		{"literal both sides true", "1 = 1", []string{"alice", "bob", "carol"}},
-		{"literal both sides false", "1 = 2", nil},
+		{"literal on left", "30 = age", []string{"alice"}, false},
+		{"literal both sides true", "1 = 1", []string{"alice", "bob", "carol"}, false},
+		{"literal both sides false", "1 = 2", nil, false},
 
-		{"null = null", "null = null", []string{"alice", "bob", "carol"}},
-		{"null = 5", "null = 5", nil},
-		{"null != 5", "null != 5", []string{"alice", "bob", "carol"}},
-		{"null < 5", "null < 5", nil},
+		{"null = null", "null = null", []string{"alice", "bob", "carol"}, false},
+		{"null = 5", "null = 5", nil, false},
+		{"null != 5", "null != 5", []string{"alice", "bob", "carol"}, false},
+		{"null < 5", "null < 5", nil, false},
 
-		{"matches simple", `key MATCHES 'ali'`, []string{"alice"}},
-		{"matches anchored", `key MATCHES '^a'`, []string{"alice"}},
-		{"matches escaped dot", `address.city MATCHES '^N.*'`, []string{"bob"}},
-		{"matches lowercase keyword", `key matches 'b.b'`, []string{"bob"}},
-		{"matches no result", `key MATCHES 'zzz'`, nil},
-		{"matches on number coerced", `age MATCHES '^4'`, []string{"carol"}},
-		{"matches on missing col", `tags.0 MATCHES '.*'`, []string{"alice"}},
-		{"NOT matches", `NOT key MATCHES '^a'`, []string{"bob", "carol"}},
-		{"NOT MATCHES infix", `key NOT MATCHES '^a'`, []string{"bob", "carol"}},
-		{"not matches lowercase", `key not matches '^a'`, []string{"bob", "carol"}},
-		{"NOT MATCHES no result", `key NOT MATCHES '.'`, nil},
-		{"NOT MATCHES on missing col", `tags.0 NOT MATCHES '.*'`, []string{"bob", "carol"}},
-		{"NOT MATCHES AND eq", `key NOT MATCHES '^a' AND active = false`, []string{"bob"}},
-		{"matches AND eq", `key MATCHES '^[ab]' AND active = true`, []string{"alice"}},
+		{"matches simple", `key MATCHES 'ali'`, []string{"alice"}, false},
+		{"matches anchored", `key MATCHES '^a'`, []string{"alice"}, false},
+		{"matches escaped dot", `address.city MATCHES '^N.*'`, []string{"bob"}, false},
+		{"matches lowercase keyword", `key matches 'b.b'`, []string{"bob"}, false},
+		{"matches no result", `key MATCHES 'zzz'`, nil, false},
+		{"matches on number coerced", `age MATCHES '^4'`, []string{"carol"}, false},
+		{"matches on missing col", `tags.0 MATCHES '.*'`, []string{"alice"}, false},
+		{"NOT matches", `NOT key MATCHES '^a'`, []string{"bob", "carol"}, false},
+		{"NOT MATCHES infix", `key NOT MATCHES '^a'`, []string{"bob", "carol"}, false},
+		{"not matches lowercase", `key not matches '^a'`, []string{"bob", "carol"}, false},
+		{"NOT MATCHES no result", `key NOT MATCHES '.'`, nil, false},
+		{"NOT MATCHES on missing col", `tags.0 NOT MATCHES '.*'`, []string{"bob", "carol"}, false},
+		{"NOT MATCHES AND eq", `key NOT MATCHES '^a' AND active = false`, []string{"bob"}, false},
+		{"matches AND eq", `key MATCHES '^[ab]' AND active = true`, []string{"alice"}, false},
 	}
 
 	for _, c := range cases {
@@ -90,10 +92,26 @@ func TestEval(t *testing.T) {
 				t.Fatalf("parse %q: %v", c.expr, err)
 			}
 			var got []string
+			var evalErr error
 			for _, r := range rows {
-				if expr.Eval(r) {
+				ok, err := expr.Eval(r)
+				if err != nil {
+					evalErr = err
+					break
+				}
+				if ok {
 					got = append(got, r["key"].(string))
 				}
+			}
+			if c.wantErr {
+				if evalErr == nil {
+					t.Errorf("expr %q: expected type-mismatch error, got rows %v", c.expr, got)
+				}
+				return
+			}
+			if evalErr != nil {
+				t.Errorf("expr %q: unexpected error: %v", c.expr, evalErr)
+				return
 			}
 			if !reflect.DeepEqual(got, c.want) {
 				t.Errorf("expr %q: got %v, want %v", c.expr, got, c.want)
@@ -106,17 +124,19 @@ func TestEvalJSONNumber(t *testing.T) {
 	r := row{"v": json.Number("42")}
 
 	cases := []struct {
-		expr string
-		want bool
+		expr    string
+		want    bool
+		wantErr bool
 	}{
-		{"v = 42", true},
-		{"v != 42", false},
-		{"v < 50", true},
-		{"v > 41", true},
-		{"v >= 42", true},
-		{"v <= 42", true},
-		{"v = 43", false},
-		{`v = "42"`, false},
+		{"v = 42", true, false},
+		{"v != 42", false, false},
+		{"v < 50", true, false},
+		{"v > 41", true, false},
+		{"v >= 42", true, false},
+		{"v <= 42", true, false},
+		{"v = 43", false, false},
+		// number vs string literal is a type mismatch.
+		{`v = "42"`, false, true},
 	}
 	for _, c := range cases {
 		t.Run(c.expr, func(t *testing.T) {
@@ -124,7 +144,18 @@ func TestEvalJSONNumber(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parse: %v", err)
 			}
-			if got := expr.Eval(r); got != c.want {
+			got, err := expr.Eval(r)
+			if c.wantErr {
+				if err == nil {
+					t.Errorf("%q: expected type-mismatch error", c.expr)
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("%q: unexpected error: %v", c.expr, err)
+				return
+			}
+			if got != c.want {
 				t.Errorf("%q: got %v want %v", c.expr, got, c.want)
 			}
 		})

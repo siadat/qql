@@ -111,7 +111,12 @@ func main() {
 		if pred != nil {
 			filtered := rows[:0]
 			for _, r := range rows {
-				if pred.Eval(r) {
+				ok, err := pred.Eval(r)
+				if err != nil {
+					fmt.Fprintln(os.Stderr, err)
+					os.Exit(2)
+				}
+				if ok {
 					filtered = append(filtered, r)
 				}
 			}

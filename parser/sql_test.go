@@ -307,7 +307,11 @@ func TestParseSQLEvalIntegration(t *testing.T) {
 	}
 	var got []string
 	for _, r := range rows {
-		if pred.Eval(r) {
+		ok, err := pred.Eval(r)
+		if err != nil {
+			t.Fatalf("eval: %v", err)
+		}
+		if ok {
 			got = append(got, r["key"].(string))
 		}
 	}

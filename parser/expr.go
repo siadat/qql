@@ -10,7 +10,7 @@ import (
 type row = map[string]any
 
 type WhereExpr interface {
-	Eval(r row) bool
+	Eval(r row) (bool, error)
 	cols(out map[string]struct{})
 }
 
@@ -31,17 +31,46 @@ func ReferencedCols(e WhereExpr) []string {
 
 type orExpr struct{ left, right WhereExpr }
 
-func (e *orExpr) Eval(r row) bool              { return e.left.Eval(r) || e.right.Eval(r) }
+// Eval short-circuits on a true left operand but always propagates evaluation
+// errors (so a type-mismatch in either branch surfaces even when the other
+// branch could short-circuit it away).
+func (e *orExpr) Eval(r row) (bool, error) {
+	l, err := e.left.Eval(r)
+	if err != nil {
+		return false, err
+	}
+	if l {
+		return true, nil
+	}
+	return e.right.Eval(r)
+}
 func (e *orExpr) cols(out map[string]struct{}) { e.left.cols(out); e.right.cols(out) }
 
 type andExpr struct{ left, right WhereExpr }
 
-func (e *andExpr) Eval(r row) bool              { return e.left.Eval(r) && e.right.Eval(r) }
+// Eval short-circuits on a false left operand but always propagates evaluation
+// errors.
+func (e *andExpr) Eval(r row) (bool, error) {
+	l, err := e.left.Eval(r)
+	if err != nil {
+		return false, err
+	}
+	if !l {
+		return false, nil
+	}
+	return e.right.Eval(r)
+}
 func (e *andExpr) cols(out map[string]struct{}) { e.left.cols(out); e.right.cols(out) }
 
 type notExpr struct{ inner WhereExpr }
 
-func (e *notExpr) Eval(r row) bool              { return !e.inner.Eval(r) }
+func (e *notExpr) Eval(r row) (bool, error) {
+	v, err := e.inner.Eval(r)
+	if err != nil {
+		return false, err
+	}
+	return !v, nil
+}
 func (e *notExpr) cols(out map[string]struct{}) { e.inner.cols(out) }
 
 type cmpOp int
@@ -92,17 +121,18 @@ type matchesExpr struct {
 
 // Eval coerces non-string values via fmt.Sprint so MATCHES is useful on
 // numbers/bools too (e.g. `size MATCHES '^4\d+$'`). nil short-circuits to false
-// rather than matching against the literal "<nil>".
-func (e *matchesExpr) Eval(r row) bool {
+// rather than matching against the literal "<nil>". MATCHES never raises a
+// type-mismatch error since the regex side has no type to compare against.
+func (e *matchesExpr) Eval(r row) (bool, error) {
 	v := e.left.resolve(r)
 	if v == nil {
-		return false
+		return false, nil
 	}
 	s, ok := v.(string)
 	if !ok {
 		s = fmt.Sprint(v)
 	}
-	return e.re.MatchString(s)
+	return e.re.MatchString(s), nil
 }
 
 func (e *matchesExpr) cols(out map[string]struct{}) { e.left.cols(out) }
@@ -112,7 +142,15 @@ type cmpExpr struct {
 	left, right operand
 }
 
-func (e *cmpExpr) Eval(r row) bool {
+// Eval compares the two operands. `null` literals follow SQL-like nil
+// semantics. Genuine missing values (nil from r[col]) propagate as false to
+// keep the common "row lacks this column" case quiet.
+//
+// When both operands are non-nil but of different scalar types (e.g. number
+// vs string), Eval returns a type-mismatch error rather than silently treating
+// the comparison as false. Otherwise a typo like `WHERE col2 != 1` against
+// string-valued data would wipe the whole result set with no explanation.
+func (e *cmpExpr) Eval(r row) (bool, error) {
 	_, lNull := e.left.(*nullLit)
 	_, rNull := e.right.(*nullLit)
 	lv := e.left.resolve(r)
@@ -121,39 +159,62 @@ func (e *cmpExpr) Eval(r row) bool {
 	if lNull || rNull {
 		switch e.op {
 		case opEq:
-			return lv == nil && rv == nil
+			return lv == nil && rv == nil, nil
 		case opNeq:
-			return !(lv == nil && rv == nil)
+			return !(lv == nil && rv == nil), nil
 		default:
-			return false
+			return false, nil
 		}
 	}
 
 	if lv == nil || rv == nil {
-		return false
+		return false, nil
 	}
 
 	if lf, ok := toFloat(lv); ok {
 		if rf, ok := toFloat(rv); ok {
-			return cmpFloat(e.op, lf, rf)
+			return cmpFloat(e.op, lf, rf), nil
 		}
-		return false
+		return false, typeMismatchError(lv, rv)
 	}
 	if ls, ok := lv.(string); ok {
 		if rs, ok := rv.(string); ok {
-			return cmpString(e.op, ls, rs)
+			return cmpString(e.op, ls, rs), nil
 		}
-		return false
+		return false, typeMismatchError(lv, rv)
 	}
 	if lb, ok := lv.(bool); ok {
 		if rb, ok := rv.(bool); ok {
-			return cmpBool(e.op, lb, rb)
+			return cmpBool(e.op, lb, rb), nil
 		}
+		return false, typeMismatchError(lv, rv)
 	}
-	return false
+	return false, typeMismatchError(lv, rv)
 }
 
 func (e *cmpExpr) cols(out map[string]struct{}) { e.left.cols(out); e.right.cols(out) }
+
+func typeMismatchError(lv, rv any) error {
+	return fmt.Errorf("type mismatch in WHERE: cannot compare %s with %s",
+		formatTypedValue(lv), formatTypedValue(rv))
+}
+
+// formatTypedValue renders a value with its runtime type tag for the
+// type-mismatch error, e.g. `"row1col2" (string)` or `1 (number)`.
+func formatTypedValue(v any) string {
+	switch x := v.(type) {
+	case string:
+		return fmt.Sprintf("%q (string)", x)
+	case bool:
+		return fmt.Sprintf("%v (bool)", x)
+	case json.Number:
+		return fmt.Sprintf("%s (number)", x.String())
+	case float64, float32, int, int64, uint64:
+		return fmt.Sprintf("%v (number)", x)
+	default:
+		return fmt.Sprintf("%v", x)
+	}
+}
 
 // CompareValues returns -1, 0, or 1 in a total order across qql's runtime types.
 // Values of different types are ordered by type rank (nil < bool < number < string < other);
