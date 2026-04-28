@@ -142,33 +142,33 @@ type cmpExpr struct {
 	left, right operand
 }
 
-// Eval compares the two operands. `null` literals follow SQL-like nil
-// semantics. Genuine missing values (nil from r[col]) propagate as false to
-// keep the common "row lacks this column" case quiet.
+// Eval compares the two operands.
+//
+// nil values are treated as a regular value for equality: nil equals nil and
+// differs from any non-nil. This applies symmetrically to explicit null
+// literals and to missing columns (a row that doesn't carry the key resolves
+// to nil), so `col != '1'` on a row with `col: null` returns true. Ordering
+// against nil (`<`, `<=`, `>`, `>=`) isn't meaningful and falls through to
+// false.
 //
 // When both operands are non-nil but of different scalar types (e.g. number
 // vs string), Eval returns a type-mismatch error rather than silently treating
 // the comparison as false. Otherwise a typo like `WHERE col2 != 1` against
 // string-valued data would wipe the whole result set with no explanation.
 func (e *cmpExpr) Eval(r row) (bool, error) {
-	_, lNull := e.left.(*nullLit)
-	_, rNull := e.right.(*nullLit)
 	lv := e.left.resolve(r)
 	rv := e.right.resolve(r)
 
-	if lNull || rNull {
+	if lv == nil || rv == nil {
+		bothNil := lv == nil && rv == nil
 		switch e.op {
 		case opEq:
-			return lv == nil && rv == nil, nil
+			return bothNil, nil
 		case opNeq:
-			return !(lv == nil && rv == nil), nil
+			return !bothNil, nil
 		default:
 			return false, nil
 		}
-	}
-
-	if lv == nil || rv == nil {
-		return false, nil
 	}
 
 	if lf, ok := toFloat(lv); ok {

@@ -44,6 +44,10 @@ func TestEval(t *testing.T) {
 		// surfaces a type-mismatch error. Rows where tags.0 is missing
 		// would silently fall through, but alice is iterated first.
 		{"missing col vs val", "tags.0 = 1", nil, true},
+		// `col != val` returns true for nil rows (missing column is
+		// not equal to a concrete value) and false for the matching
+		// non-nil row.
+		{"missing col != val", `tags.0 != "eng"`, []string{"bob", "carol"}, false},
 		{"missing col is null", "tags.0 = null", []string{"bob", "carol"}, false},
 		{"missing col not null", "tags.0 != null", []string{"alice"}, false},
 		{"explicit null is null", "middle_name = null", []string{"alice", "bob", "carol"}, false},
