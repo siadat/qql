@@ -87,6 +87,22 @@ func TestEval(t *testing.T) {
 		{"NOT MATCHES on missing col", `tags.0 NOT MATCHES '.*'`, []string{"bob", "carol"}, false},
 		{"NOT MATCHES AND eq", `key NOT MATCHES '^a' AND active = false`, []string{"bob"}, false},
 		{"matches AND eq", `key MATCHES '^[ab]' AND active = true`, []string{"alice"}, false},
+
+		{"IN num list", "age IN (25, 30)", []string{"alice", "bob"}, false},
+		{"IN single element", "age IN (41)", []string{"carol"}, false},
+		{"IN string list", `address.city IN ("SF", "LA")`, []string{"alice", "carol"}, false},
+		{"IN no match", "age IN (99, 100)", nil, false},
+		{"NOT IN num list", "age NOT IN (25, 30)", []string{"carol"}, false},
+		{"not in lowercase", "age not in (25)", []string{"alice", "carol"}, false},
+		// Nil left operand: lv is nil, every list element is non-nil so each
+		// equality is false. IN returns false; NOT IN returns true.
+		{"IN with nil col", `tags.0 IN ("eng", "lead")`, []string{"alice"}, false},
+		{"NOT IN with nil col", `tags.0 NOT IN ("eng", "lead")`, []string{"bob", "carol"}, false},
+		// `null` as a list element matches rows whose value is also nil.
+		{"IN list with null", `tags.0 IN ("eng", null)`, []string{"alice", "bob", "carol"}, false},
+		// alice's age is a number, "thirty" is a string, hits the same
+		// type-mismatch path as `=`.
+		{"IN type mismatch", `age IN (25, "thirty")`, nil, true},
 	}
 
 	for _, c := range cases {

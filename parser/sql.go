@@ -27,6 +27,7 @@ const (
 	tokGt
 	tokGte
 	tokMatches
+	tokIn
 	tokLParen
 	tokRParen
 	tokSelect
@@ -118,6 +119,8 @@ func tokenize(src string) ([]token, error) {
 				kind = tokWith
 			case "matches":
 				kind = tokMatches
+			case "in":
+				kind = tokIn
 			case "exclude":
 				kind = tokExclude
 			}
@@ -586,6 +589,9 @@ func (p *parseState) parseComparison() (WhereExpr, error) {
 		}
 		return expr, nil
 	}
+	if p.peek().kind == tokIn || (p.peek().kind == tokNot && p.pos+1 < len(p.toks) && p.toks[p.pos+1].kind == tokIn) {
+		return p.parseInList(left)
+	}
 	t := p.peek()
 	var op cmpOp
 	switch t.kind {
@@ -610,6 +616,43 @@ func (p *parseState) parseComparison() (WhereExpr, error) {
 		return nil, err
 	}
 	return &cmpExpr{op: op, left: left, right: right}, nil
+}
+
+// parseInList parses the right side of `<left> [NOT] IN ( <op> [, <op>]* )`.
+// The leading IN (or NOT IN) tokens have not yet been consumed.
+func (p *parseState) parseInList(left operand) (WhereExpr, error) {
+	negated := p.peek().kind == tokNot
+	if negated {
+		p.advance()
+	}
+	p.advance() // consume IN
+	if p.peek().kind != tokLParen {
+		t := p.peek()
+		return nil, fmt.Errorf("expected '(' after IN at offset %d, got %q", t.pos, t.text)
+	}
+	p.advance() // consume (
+	if p.peek().kind == tokRParen {
+		t := p.peek()
+		return nil, fmt.Errorf("IN list must contain at least one value at offset %d", t.pos)
+	}
+	var list []operand
+	for {
+		op, err := p.parseOperand()
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, op)
+		if p.peek().kind != tokComma {
+			break
+		}
+		p.advance() // consume ,
+	}
+	if p.peek().kind != tokRParen {
+		t := p.peek()
+		return nil, fmt.Errorf("expected ',' or ')' in IN list at offset %d, got %q", t.pos, t.text)
+	}
+	p.advance() // consume )
+	return &inExpr{left: left, list: list, negated: negated}, nil
 }
 
 func (p *parseState) parseOperand() (operand, error) {

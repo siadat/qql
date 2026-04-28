@@ -194,6 +194,73 @@ func (e *cmpExpr) Eval(r row) (bool, error) {
 
 func (e *cmpExpr) cols(out map[string]struct{}) { e.left.cols(out); e.right.cols(out) }
 
+// inExpr models `<left> [NOT] IN (<list>)`. It compares the left operand to
+// each list operand under the same equality rules as `=` (so a string column
+// against a numeric list element raises a type-mismatch error). The full list
+// is evaluated even after a match so a stray mistyped element still reports
+// its mismatch.
+type inExpr struct {
+	left    operand
+	list    []operand
+	negated bool
+}
+
+func (e *inExpr) Eval(r row) (bool, error) {
+	lv := e.left.resolve(r)
+	found := false
+	for _, op := range e.list {
+		rv := op.resolve(r)
+		eq, err := scalarEquals(lv, rv)
+		if err != nil {
+			return false, err
+		}
+		if eq {
+			found = true
+		}
+	}
+	if e.negated {
+		return !found, nil
+	}
+	return found, nil
+}
+
+func (e *inExpr) cols(out map[string]struct{}) {
+	e.left.cols(out)
+	for _, op := range e.list {
+		op.cols(out)
+	}
+}
+
+// scalarEquals reports whether lv and rv are equal under qql's runtime type
+// rules: nil equals nil and differs from non-nil; otherwise both sides must
+// share a type rank (number/string/bool) or it's a type-mismatch error. The
+// rule mirrors cmpExpr's `=` branch and is shared with inExpr so `IN` lines up
+// exactly with `=` semantics.
+func scalarEquals(lv, rv any) (bool, error) {
+	if lv == nil || rv == nil {
+		return lv == nil && rv == nil, nil
+	}
+	if lf, ok := toFloat(lv); ok {
+		if rf, ok := toFloat(rv); ok {
+			return lf == rf, nil
+		}
+		return false, typeMismatchError(lv, rv)
+	}
+	if ls, ok := lv.(string); ok {
+		if rs, ok := rv.(string); ok {
+			return ls == rs, nil
+		}
+		return false, typeMismatchError(lv, rv)
+	}
+	if lb, ok := lv.(bool); ok {
+		if rb, ok := rv.(bool); ok {
+			return lb == rb, nil
+		}
+		return false, typeMismatchError(lv, rv)
+	}
+	return false, typeMismatchError(lv, rv)
+}
+
 func typeMismatchError(lv, rv any) error {
 	return fmt.Errorf("type mismatch in WHERE: cannot compare %s with %s",
 		formatTypedValue(lv), formatTypedValue(rv))
