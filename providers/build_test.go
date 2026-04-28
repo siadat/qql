@@ -86,14 +86,50 @@ func TestBuildRows(t *testing.T) {
 			},
 		},
 		{
-			name: "non-map root produces single row without key",
+			name: "list root: each element becomes a row keyed by its index",
 			input: `
 				- 1
 				- 2
 				- 3
 			`,
 			want: []map[string]any{
-				{"0": 1, "1": 2, "2": 3},
+				{"key": "0", "": 1},
+				{"key": "1", "": 2},
+				{"key": "2", "": 3},
+			},
+		},
+		{
+			name: "list-of-maps root: index is the key, fields become columns",
+			input: `
+				- {col1: row1col1, col2: row1col2}
+				- {col1: row2col1, col2: row2col2}
+			`,
+			want: []map[string]any{
+				{"key": "0", "col1": "row1col1", "col2": "row1col2"},
+				{"key": "1", "col1": "row2col1", "col2": "row2col2"},
+			},
+		},
+		{
+			name: "list-of-lists root: index is the key, inner indices become columns",
+			input: `
+				- [a, b]
+				- [c, d, [e, f]]
+			`,
+			want: []map[string]any{
+				{"key": "0", "0": "a", "1": "b"},
+				{"key": "1", "0": "c", "1": "d", "2.0": "e", "2.1": "f"},
+			},
+		},
+		{
+			name:   "literal numeric segment indexes into a list",
+			prefix: "arr.0",
+			input: `
+				arr:
+				  - {x: 1, y: 2}
+				  - {x: 3, y: 4}
+			`,
+			want: []map[string]any{
+				{"x": 1, "y": 2},
 			},
 		},
 		{

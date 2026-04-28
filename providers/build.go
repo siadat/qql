@@ -10,17 +10,19 @@ import (
 // rowsFromTree turns a nested tree (e.g. a decoded JSON or YAML value) into
 // flat rows by walking it under a dot-glob prefix.
 //
-// prefix is a dot-separated glob: "*" matches any map key (and captures it
-// as a column), literal segments descend into that key without capturing.
-// The rightmost "*" captures as column "key" with the FULL path from root to
-// the row (including any literals after the wildcard, e.g. `*.servers` →
-// "region-a.servers"). Earlier "*"s capture as "key_capture_1", "key_capture_2",
-// … (1-indexed, left-to-right) with just the matched key. Empty prefix is
-// treated as "*" — top-level map keys become rows, matching the original
-// (pre-WITH) behavior.
+// prefix is a dot-separated glob: "*" matches any map key or list index (and
+// captures it as a column), literal segments descend into that map key or
+// numeric list index without capturing. The rightmost "*" captures as column
+// "key" with the FULL path from root to the row (including any literals after
+// the wildcard, e.g. `*.servers` → "region-a.servers"). Earlier "*"s capture
+// as "key_capture_1", "key_capture_2", … (1-indexed, left-to-right) with just
+// the matched key. Empty prefix is treated as "*" — top-level map keys (or
+// list indices) become rows, matching the original (pre-WITH) behavior for
+// maps and giving lists a parallel "one row per element" shape.
 //
-// Branches that don't match (non-map where the path expects one, or missing
-// key) are silently skipped — there's no schema, so partial matches are normal.
+// Branches that don't match (scalar where the path expects a map or list,
+// missing key, out-of-range index) are silently skipped — there's no schema,
+// so partial matches are normal.
 func rowsFromTree(tree any, prefix string) ([]map[string]any, error) {
 	if prefix == "" {
 		prefix = "*"
@@ -31,12 +33,12 @@ func rowsFromTree(tree any, prefix string) ([]map[string]any, error) {
 			return nil, fmt.Errorf("invalid rows path %q: empty segment", prefix)
 		}
 	}
-	// Back-compat for the default path: a non-map root becomes a single row of
-	// flattened columns instead of producing zero rows. Pre-WITH callers did
-	// this, and CLI invocations that don't pass WITH should keep behaving the
-	// same way against array-rooted JSON.
+	// Default-path back-compat: a scalar at the root becomes a single row of
+	// flattened columns instead of producing zero rows. List/map roots both go
+	// through the wildcard walk so a top-level list expands to one row per
+	// element, with the index serving as the row key.
 	if len(segs) == 1 && segs[0] == "*" {
-		if _, isMap := tree.(map[string]any); !isMap {
+		if !isContainer(tree) {
 			row := map[string]any{}
 			flatten(tree, "", row)
 			return []map[string]any{row}, nil
@@ -49,6 +51,14 @@ func rowsFromTree(tree any, prefix string) ([]map[string]any, error) {
 	var rows []map[string]any
 	walkRows(tree, segs, names, rightmost, 0, matches, &rows)
 	return rows, nil
+}
+
+func isContainer(v any) bool {
+	switch v.(type) {
+	case map[string]any, []any:
+		return true
+	}
+	return false
 }
 
 func rightmostWildcard(segs []string) int {
@@ -92,23 +102,38 @@ func walkRows(v any, segs, names []string, rightmost, depth int, matches []strin
 		*rows = append(*rows, row)
 		return
 	}
-	m, ok := v.(map[string]any)
-	if !ok {
-		return
-	}
 	seg := segs[depth]
-	if seg == "*" {
-		for k, child := range m {
-			matches[depth] = k
-			walkRows(child, segs, names, rightmost, depth+1, matches, rows)
+	switch x := v.(type) {
+	case map[string]any:
+		if seg == "*" {
+			for k, child := range x {
+				matches[depth] = k
+				walkRows(child, segs, names, rightmost, depth+1, matches, rows)
+			}
+			return
 		}
-		return
+		child, ok := x[seg]
+		if !ok {
+			return
+		}
+		walkRows(child, segs, names, rightmost, depth+1, matches, rows)
+	case []any:
+		if seg == "*" {
+			for i, child := range x {
+				matches[depth] = strconv.Itoa(i)
+				walkRows(child, segs, names, rightmost, depth+1, matches, rows)
+			}
+			return
+		}
+		// A literal segment against a list addresses an element by its
+		// stringified index (matching how flatten names list children),
+		// e.g. prefix `arr.0` descends into the first element of `arr`.
+		idx, err := strconv.Atoi(seg)
+		if err != nil || idx < 0 || idx >= len(x) {
+			return
+		}
+		walkRows(x[idx], segs, names, rightmost, depth+1, matches, rows)
 	}
-	child, ok := m[seg]
-	if !ok {
-		return
-	}
-	walkRows(child, segs, names, rightmost, depth+1, matches, rows)
 }
 
 // captureValue builds the column value for the wildcard at segs[i]:
