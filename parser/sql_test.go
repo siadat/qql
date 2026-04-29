@@ -29,7 +29,7 @@ func TestParseSQL(t *testing.T) {
 		{"mixed case keywords", "Select a Where b = 1", []string{"a"}, "", true, nil, -1, 0, WithOptions{}, "b = 1"},
 		{"from only", "FROM git:.", nil, "git:.", false, nil, -1, 0, WithOptions{}, ""},
 		{"select from", "SELECT * FROM git:.", nil, "git:.", false, nil, -1, 0, WithOptions{}, ""},
-		{"select from where", "SELECT * FROM git:. WHERE author = 'Sina'", nil, "git:.", true, nil, -1, 0, WithOptions{}, "author = 'Sina'"},
+		{"select from where", "SELECT * FROM git:. WHERE author_name = 'Sina'", nil, "git:.", true, nil, -1, 0, WithOptions{}, "author_name = 'Sina'"},
 		{"from path", "SELECT a FROM /tmp/foo.json WHERE x = 1", []string{"a"}, "/tmp/foo.json", true, nil, -1, 0, WithOptions{}, "x = 1"},
 		{"from with colon", "FROM git:/home/me/repo", nil, "git:/home/me/repo", false, nil, -1, 0, WithOptions{}, ""},
 
@@ -40,7 +40,7 @@ func TestParseSQL(t *testing.T) {
 		{"order by dot path", "ORDER BY user.age", nil, "", false, []OrderTerm{{Col: "user.age"}}, -1, 0, WithOptions{}, ""},
 		{"order by lowercase", "order by a desc", nil, "", false, []OrderTerm{{Col: "a", Desc: true}}, -1, 0, WithOptions{}, ""},
 		{"select where order by", "SELECT a WHERE b = 1 ORDER BY a DESC", []string{"a"}, "", true, []OrderTerm{{Col: "a", Desc: true}}, -1, 0, WithOptions{}, "b = 1"},
-		{"select from where order by", "SELECT * FROM git:. WHERE author = 'Sina' ORDER BY time DESC", nil, "git:.", true, []OrderTerm{{Col: "time", Desc: true}}, -1, 0, WithOptions{}, "author = 'Sina'"},
+		{"select from where order by", "SELECT * FROM git:. WHERE author_name = 'Sina' ORDER BY author_time DESC", nil, "git:.", true, []OrderTerm{{Col: "author_time", Desc: true}}, -1, 0, WithOptions{}, "author_name = 'Sina'"},
 
 		{"limit only", "LIMIT 10", nil, "", false, nil, 10, 0, WithOptions{}, ""},
 		{"limit zero", "LIMIT 0", nil, "", false, nil, 0, 0, WithOptions{}, ""},

@@ -78,7 +78,7 @@ One or more `<column> [ASC|DESC]` terms separated by commas. `ASC` is the defaul
 
 Trailing configuration as a comma-separated list of `<key> = '<value>'` pairs. Recognized keys:
 
-- `provider = 'git:<repo>'`: read commit rows from the given repository (use `git:.` for the current directory). Columns: `commit`, `author`, `email`, `time`, `subject`. `FROM` and positional paths are ignored.
+- `provider = 'git:<repo>'`: read commit rows from the given repository (use `git:.` for the current directory). Columns: `commit`, `author_name`, `author_email`, `author_time`, `committer_name`, `committer_email`, `committer_time`, `subject`, `parents` (space-separated parent hashes, `''` for the root commit), `is_merge` (derived bool), `refs` (ref names in full form, e.g. `refs/heads/main, tag: refs/tags/v1`). `FROM` and positional paths are ignored. For diff stats or per-file rows, write an external provider.
 - `provider = 'external:<script>'`: replace built-in dispatch with a user-supplied script (see "External providers").
 
 ## Input shape
