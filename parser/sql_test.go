@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 )
@@ -296,6 +297,129 @@ func TestParseSQLCountNotKeyword(t *testing.T) {
 	want := []string{"count", "total"}
 	if !reflect.DeepEqual(cols, want) {
 		t.Errorf("cols: got %v, want %v", cols, want)
+	}
+}
+
+func TestParseUpdate(t *testing.T) {
+	cases := []struct {
+		name         string
+		src          string
+		wantSets     []SetAssignment
+		wantWhereRaw string
+	}{
+		{
+			"single string",
+			`UPDATE SET status = "down" WHERE name = "foo"`,
+			[]SetAssignment{{Col: "status", Value: "down"}},
+			`name = "foo"`,
+		},
+		{
+			"multi assignments mixed types",
+			`UPDATE SET status = 'down', retries = 0, archived = true, notes = null WHERE id = 1`,
+			[]SetAssignment{
+				{Col: "status", Value: "down"},
+				{Col: "retries", Value: json.Number("0")},
+				{Col: "archived", Value: true},
+				{Col: "notes", Value: nil},
+			},
+			"id = 1",
+		},
+		{
+			"float number kept as json.Number",
+			`UPDATE SET ratio = 1.5 WHERE x = 1`,
+			[]SetAssignment{{Col: "ratio", Value: json.Number("1.5")}},
+			"x = 1",
+		},
+		{
+			"false literal",
+			`UPDATE SET active = false WHERE x = 1`,
+			[]SetAssignment{{Col: "active", Value: false}},
+			"x = 1",
+		},
+		{
+			"dot path lhs",
+			`UPDATE SET cfg.timeout = 60 WHERE key = 'api'`,
+			[]SetAssignment{{Col: "cfg.timeout", Value: json.Number("60")}},
+			"key = 'api'",
+		},
+		{
+			"lowercase keywords",
+			`update set status = 'down' where name = 'foo'`,
+			[]SetAssignment{{Col: "status", Value: "down"}},
+			"name = 'foo'",
+		},
+		{
+			"complex where",
+			`UPDATE SET status = 'down' WHERE region = 'eu' AND cpu >= 8`,
+			[]SetAssignment{{Col: "status", Value: "down"}},
+			"region = 'eu' AND cpu >= 8",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			stmt, err := Parse(c.src)
+			if err != nil {
+				t.Fatalf("parse %q: %v", c.src, err)
+			}
+			u, ok := stmt.(*UpdateStmt)
+			if !ok {
+				t.Fatalf("expected *UpdateStmt, got %T", stmt)
+			}
+			if !reflect.DeepEqual(u.Sets, c.wantSets) {
+				t.Errorf("sets: got %#v, want %#v", u.Sets, c.wantSets)
+			}
+			if u.Pred == nil {
+				t.Errorf("pred: got nil, want non-nil")
+			}
+			if u.WhereRaw != c.wantWhereRaw {
+				t.Errorf("whereRaw: got %q, want %q", u.WhereRaw, c.wantWhereRaw)
+			}
+		})
+	}
+}
+
+func TestParseUpdateErrors(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+	}{
+		{"missing set", "UPDATE WHERE x = 1"},
+		{"missing where", "UPDATE SET x = 1"},
+		{"missing where with trailing", "UPDATE SET x = 1 ORDER BY x"},
+		{"empty set list", "UPDATE SET WHERE x = 1"},
+		{"non-literal rhs ident", "UPDATE SET x = y WHERE z = 1"},
+		{"non-literal rhs star", "UPDATE SET x = * WHERE z = 1"},
+		{"missing eq", "UPDATE SET x 1 WHERE z = 1"},
+		{"trailing comma in set", "UPDATE SET x = 1, WHERE z = 1"},
+		{"set key column", "UPDATE SET key = 'foo' WHERE x = 1"},
+		{"duplicate set target", "UPDATE SET x = 1, x = 2 WHERE z = 1"},
+		{"junk after where", "UPDATE SET x = 1 WHERE z = 1 garbage"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := Parse(c.src)
+			if err == nil {
+				t.Errorf("expected error for %q", c.src)
+			}
+		})
+	}
+}
+
+func TestParseDispatch(t *testing.T) {
+	stmt, err := Parse("SELECT * WHERE a = 1")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if _, ok := stmt.(*SelectStmt); !ok {
+		t.Errorf("expected *SelectStmt, got %T", stmt)
+	}
+
+	stmt, err = Parse("UPDATE SET a = 1 WHERE b = 2")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if _, ok := stmt.(*UpdateStmt); !ok {
+		t.Errorf("expected *UpdateStmt, got %T", stmt)
 	}
 }
 

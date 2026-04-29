@@ -35,11 +35,20 @@ func main() {
 		os.Exit(2)
 	}
 
-	selected, excluded, sqlSource, pred, orderBy, limit, offset, with, whereRaw, isCount, err := parser.ParseSQL(args[0])
+	stmt, err := parser.Parse(args[0])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
+
+	if u, ok := stmt.(*parser.UpdateStmt); ok {
+		runUpdate(u, args[1:])
+		return
+	}
+
+	sel := stmt.(*parser.SelectStmt)
+	selected, excluded, sqlSource, pred, orderBy, limit, offset, with, whereRaw, isCount :=
+		sel.Selected, sel.Excluded, sel.Source, sel.Pred, sel.OrderBy, sel.Limit, sel.Offset, sel.With, sel.WhereRaw, sel.IsCount
 
 	var paths []string
 	if sqlSource != "" {

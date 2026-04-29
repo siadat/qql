@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -44,6 +45,8 @@ const (
 	tokStar
 	tokSource
 	tokExclude
+	tokUpdate
+	tokSet
 )
 
 type token struct {
@@ -123,6 +126,10 @@ func tokenize(src string) ([]token, error) {
 				kind = tokIn
 			case "exclude":
 				kind = tokExclude
+			case "update":
+				kind = tokUpdate
+			case "set":
+				kind = tokSet
 			}
 			toks = append(toks, token{kind, text, start})
 		case isDigit(c):
@@ -231,7 +238,81 @@ type WithOptions struct {
 	Provider string
 }
 
-// ParseSQL parses a qql query and returns the parsed pieces.
+// Statement is the parsed top-level form of a qql query. Concrete types are
+// *SelectStmt and *UpdateStmt. Use Parse(src) to obtain one and type-switch.
+type Statement interface{ isStmt() }
+
+// SelectStmt holds everything parsed out of a SELECT query. Fields mirror the
+// individual return values of ParseSQL so the existing SELECT pipeline can keep
+// using ParseSQL while new code uses Parse for dispatch.
+type SelectStmt struct {
+	Selected []string
+	Excluded []string
+	Source   string
+	Pred     WhereExpr
+	OrderBy  []OrderTerm
+	Limit    int
+	Offset   int
+	With     WithOptions
+	WhereRaw string
+	IsCount  bool
+}
+
+func (*SelectStmt) isStmt() {}
+
+// SetAssignment is one column = literal pair from an UPDATE ... SET clause.
+// Value holds the parsed literal: string, json.Number, bool, or nil.
+// Numbers are kept as json.Number so they round-trip through the JSON
+// provider unchanged (its loader uses dec.UseNumber()).
+type SetAssignment struct {
+	Col   string
+	Value any
+}
+
+// UpdateStmt holds the parsed pieces of `UPDATE SET ... WHERE ...`. WHERE is
+// required by the grammar today; Pred is therefore always non-nil.
+type UpdateStmt struct {
+	Sets     []SetAssignment
+	Pred     WhereExpr
+	WhereRaw string
+}
+
+func (*UpdateStmt) isStmt() {}
+
+// Parse parses a qql query and returns a Statement. Callers type-switch on the
+// returned value to handle SELECT and UPDATE separately. Errors come from
+// tokenization, syntax, or trailing-token checks (anything left unread after
+// the statement-specific parser is treated as a parse error).
+func Parse(src string) (Statement, error) {
+	toks, err := tokenize(src)
+	if err != nil {
+		return nil, err
+	}
+	p := &parseState{toks: toks}
+
+	if p.peek().kind == tokUpdate {
+		p.advance()
+		stmt, err := parseUpdate(p, src)
+		if err != nil {
+			return nil, err
+		}
+		if t := p.peek(); t.kind != tokEOF {
+			return nil, fmt.Errorf("unexpected token %q at offset %d", t.text, t.pos)
+		}
+		return stmt, nil
+	}
+
+	stmt, err := parseSelect(p, src)
+	if err != nil {
+		return nil, err
+	}
+	if t := p.peek(); t.kind != tokEOF {
+		return nil, fmt.Errorf("unexpected token %q at offset %d", t.text, t.pos)
+	}
+	return stmt, nil
+}
+
+// ParseSQL parses a SELECT query and returns the parsed pieces.
 //
 // whereRaw is the original substring of `src` covering the WHERE expression
 // (between WHERE and the next clause), trimmed of trailing whitespace. It is
@@ -249,87 +330,188 @@ type WithOptions struct {
 // excluded is the column list from `SELECT * EXCLUDE(col1, col2, ...)`. It is
 // only set when the projection was a star plus an EXCLUDE clause; the caller
 // should drop those columns from whatever set `*` would otherwise produce.
+//
+// For UPDATE queries, use Parse and type-switch on the returned Statement.
 func ParseSQL(src string) (selected []string, excluded []string, source string, pred WhereExpr, orderBy []OrderTerm, limit, offset int, with WithOptions, whereRaw string, isCount bool, err error) {
-	limit = -1
-	fail := func(e error) (selected []string, excluded []string, source string, pred WhereExpr, orderBy []OrderTerm, limit, offset int, with WithOptions, whereRaw string, isCount bool, err error) {
-		return nil, nil, "", nil, nil, -1, 0, WithOptions{}, "", false, e
-	}
-	toks, err := tokenize(src)
+	stmt, err := Parse(src)
 	if err != nil {
-		return fail(err)
+		return nil, nil, "", nil, nil, -1, 0, WithOptions{}, "", false, err
 	}
-	p := &parseState{toks: toks}
+	s, ok := stmt.(*SelectStmt)
+	if !ok {
+		return nil, nil, "", nil, nil, -1, 0, WithOptions{}, "", false, fmt.Errorf("ParseSQL: expected SELECT statement, got %T", stmt)
+	}
+	return s.Selected, s.Excluded, s.Source, s.Pred, s.OrderBy, s.Limit, s.Offset, s.With, s.WhereRaw, s.IsCount, nil
+}
+
+// parseSelect runs the SELECT-specific portion of the grammar against an
+// already-tokenized parseState. The caller is responsible for the trailing
+// EOF check.
+func parseSelect(p *parseState, src string) (*SelectStmt, error) {
+	stmt := &SelectStmt{Limit: -1}
 
 	if p.peek().kind == tokSelect {
 		p.advance()
-		selected, excluded, isCount, err = parseSelectList(p)
+		sel, exc, isCount, err := parseSelectList(p)
 		if err != nil {
-			return fail(err)
+			return nil, err
 		}
+		stmt.Selected = sel
+		stmt.Excluded = exc
+		stmt.IsCount = isCount
 	}
 
 	if p.peek().kind == tokFrom {
 		p.advance()
 		t := p.peek()
 		if t.kind != tokSource {
-			return fail(fmt.Errorf("expected source after FROM at offset %d, got %q", t.pos, t.text))
+			return nil, fmt.Errorf("expected source after FROM at offset %d, got %q", t.pos, t.text)
 		}
 		p.advance()
-		source = t.text
+		stmt.Source = t.text
 	}
 
 	if p.peek().kind == tokWhere {
 		p.advance()
 		whereStart := p.peek().pos
-		pred, err = p.parseOr()
+		pred, err := p.parseOr()
 		if err != nil {
-			return fail(err)
+			return nil, err
 		}
-		whereRaw = strings.TrimRight(src[whereStart:p.peek().pos], " \t\n\r")
+		stmt.Pred = pred
+		stmt.WhereRaw = strings.TrimRight(src[whereStart:p.peek().pos], " \t\n\r")
 	}
 
 	if p.peek().kind == tokOrder {
 		p.advance()
 		t := p.advance()
 		if t.kind != tokBy {
-			return fail(fmt.Errorf("expected BY after ORDER at offset %d, got %q", t.pos, t.text))
+			return nil, fmt.Errorf("expected BY after ORDER at offset %d, got %q", t.pos, t.text)
 		}
-		orderBy, err = parseOrderBy(p)
+		ob, err := parseOrderBy(p)
 		if err != nil {
-			return fail(err)
+			return nil, err
 		}
+		stmt.OrderBy = ob
 	}
 
 	if p.peek().kind == tokLimit {
 		p.advance()
-		n, perr := parseNonNegativeInt(p, "LIMIT")
-		if perr != nil {
-			return fail(perr)
+		n, err := parseNonNegativeInt(p, "LIMIT")
+		if err != nil {
+			return nil, err
 		}
-		limit = n
+		stmt.Limit = n
 	}
 
 	if p.peek().kind == tokOffset {
 		p.advance()
-		n, perr := parseNonNegativeInt(p, "OFFSET")
-		if perr != nil {
-			return fail(perr)
+		n, err := parseNonNegativeInt(p, "OFFSET")
+		if err != nil {
+			return nil, err
 		}
-		offset = n
+		stmt.Offset = n
 	}
 
 	if p.peek().kind == tokWith {
 		p.advance()
-		with, err = parseWith(p)
+		w, err := parseWith(p)
 		if err != nil {
-			return fail(err)
+			return nil, err
 		}
+		stmt.With = w
 	}
 
-	if t := p.peek(); t.kind != tokEOF {
-		return fail(fmt.Errorf("unexpected token %q at offset %d", t.text, t.pos))
+	return stmt, nil
+}
+
+// parseUpdate consumes the UPDATE form: SET assignments, then a required
+// WHERE clause. The caller has already consumed the leading UPDATE token and
+// is responsible for the trailing EOF check.
+func parseUpdate(p *parseState, src string) (*UpdateStmt, error) {
+	if t := p.peek(); t.kind != tokSet {
+		return nil, fmt.Errorf("expected SET after UPDATE at offset %d, got %q", t.pos, t.text)
 	}
-	return selected, excluded, source, pred, orderBy, limit, offset, with, whereRaw, isCount, nil
+	p.advance()
+
+	sets, err := parseSetList(p)
+	if err != nil {
+		return nil, err
+	}
+
+	if t := p.peek(); t.kind != tokWhere {
+		return nil, fmt.Errorf("UPDATE requires a WHERE clause at offset %d, got %q", t.pos, t.text)
+	}
+	p.advance()
+	whereStart := p.peek().pos
+	pred, err := p.parseOr()
+	if err != nil {
+		return nil, err
+	}
+	whereRaw := strings.TrimRight(src[whereStart:p.peek().pos], " \t\n\r")
+
+	return &UpdateStmt{Sets: sets, Pred: pred, WhereRaw: whereRaw}, nil
+}
+
+// parseSetList reads `col = literal [, col = literal]*` from the SET clause.
+// Only literal RHS is accepted (string, number, bool, null) — column refs
+// and expressions are out of scope. The synthetic `key` column is read-only
+// and is rejected here so the user gets a clear error instead of a silent
+// no-op deeper in the pipeline.
+func parseSetList(p *parseState) ([]SetAssignment, error) {
+	var sets []SetAssignment
+	seen := map[string]bool{}
+	for {
+		col := p.advance()
+		if col.kind != tokIdent {
+			return nil, fmt.Errorf("expected column name in SET at offset %d, got %q", col.pos, col.text)
+		}
+		if col.text == "key" {
+			return nil, fmt.Errorf("cannot SET the synthetic %q column at offset %d", col.text, col.pos)
+		}
+		if seen[col.text] {
+			return nil, fmt.Errorf("duplicate SET target %q at offset %d", col.text, col.pos)
+		}
+		eq := p.advance()
+		if eq.kind != tokEq {
+			return nil, fmt.Errorf("expected '=' after SET target at offset %d, got %q", eq.pos, eq.text)
+		}
+		val, err := parseSetLiteral(p)
+		if err != nil {
+			return nil, err
+		}
+		sets = append(sets, SetAssignment{Col: col.text, Value: val})
+		seen[col.text] = true
+		if p.peek().kind != tokComma {
+			break
+		}
+		p.advance()
+	}
+	return sets, nil
+}
+
+// parseSetLiteral reads one literal token (string, number, bool, null) and
+// returns the Go value to store. Numbers are returned as json.Number so the
+// JSON provider preserves the exact representation the user typed.
+func parseSetLiteral(p *parseState) (any, error) {
+	t := p.advance()
+	switch t.kind {
+	case tokString:
+		return t.text, nil
+	case tokNumber:
+		if _, err := strconv.ParseFloat(t.text, 64); err != nil {
+			return nil, fmt.Errorf("invalid number %q at offset %d", t.text, t.pos)
+		}
+		return json.Number(t.text), nil
+	case tokTrue:
+		return true, nil
+	case tokFalse:
+		return false, nil
+	case tokNull:
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("expected literal value (string, number, true, false, null) at offset %d, got %q", t.pos, t.text)
+	}
 }
 
 // parseNonNegativeInt consumes the next token, expecting a non-negative
