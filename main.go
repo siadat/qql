@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -64,6 +66,14 @@ func main() {
 		if len(paths) > 1 {
 			fmt.Fprintln(os.Stderr, "stdin source `-` cannot be combined with other files")
 			os.Exit(2)
+		}
+		// Streaming path: when the user asks for JSONL output and there's no
+		// global aggregation step (ORDER BY, COUNT) blocking us, emit each
+		// matching row as it arrives. JSONL is naturally streamable so we
+		// avoid the "what column widths?" problem of streaming tables.
+		if outFlag == "jsonl" && len(orderBy) == 0 && !isCount {
+			streamStdinJSONL(selected, excluded, pred, limit, offset)
+			return
 		}
 		stdinRows, firstKeys, err := providers.LoadJSONL(os.Stdin)
 		if err != nil {
@@ -336,6 +346,117 @@ func flattenGroups(groups [][]row) []row {
 	out := make([]row, 0, total)
 	for _, g := range groups {
 		out = append(out, g...)
+	}
+	return out
+}
+
+// errStreamLimitReached unwinds the StreamJSONL callback once LIMIT is met
+// without conflating the early-stop signal with a real I/O / parse error.
+var errStreamLimitReached = errors.New("stream limit reached")
+
+// streamStdinJSONL is the real-time path: scan stdin one JSON object at a
+// time, apply WHERE/OFFSET/LIMIT, and write each surviving row straight to
+// os.Stdout. The first object's keys lock in the column projection (when
+// the user wrote SELECT *) and become the validation set for column
+// references — we never see a "later row" here, so the first row IS the
+// schema.
+func streamStdinJSONL(selected, excluded []string, pred parser.WhereExpr, limit, offset int) {
+	enc := json.NewEncoder(os.Stdout)
+	var skipped, emitted int
+	var validated bool
+	cols := selected
+	err := providers.StreamJSONL(os.Stdin, func(r row, firstKeys []string) error {
+		if !validated {
+			if err := validateAgainstKeys(firstKeys, selected, excluded, pred); err != nil {
+				return err
+			}
+			if cols == nil {
+				cols = firstKeys
+			}
+			validated = true
+		}
+		if pred != nil {
+			ok, err := pred.Eval(r)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return nil
+			}
+		}
+		if skipped < offset {
+			skipped++
+			return nil
+		}
+		if limit >= 0 && emitted >= limit {
+			return errStreamLimitReached
+		}
+		obj := projectRow(r, cols, excluded)
+		if err := enc.Encode(obj); err != nil {
+			return err
+		}
+		emitted++
+		return nil
+	})
+	if err != nil && !errors.Is(err, errStreamLimitReached) {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+}
+
+// validateAgainstKeys is the streaming counterpart of validateColumns: it
+// checks SELECT/EXCLUDE/WHERE references against a single ordered key set
+// (the first row's keys). Empty keys means an empty stream, which we treat
+// as "nothing to validate" so an empty pipe just exits cleanly.
+func validateAgainstKeys(keys, selected, excluded []string, pred parser.WhereExpr) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	available := make(map[string]struct{}, len(keys))
+	for _, k := range keys {
+		available[k] = struct{}{}
+	}
+	check := func(col, source string) error {
+		if _, ok := available[col]; ok {
+			return nil
+		}
+		return fmt.Errorf("column %q referenced in %s does not exist\navailable columns: %s",
+			col, source, strings.Join(keys, ", "))
+	}
+	for _, c := range selected {
+		if err := check(c, "SELECT"); err != nil {
+			return err
+		}
+	}
+	for _, c := range excluded {
+		if err := check(c, "EXCLUDE"); err != nil {
+			return err
+		}
+	}
+	if pred != nil {
+		for _, c := range parser.ReferencedCols(pred) {
+			if err := check(c, "WHERE"); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// projectRow builds the per-row object that gets JSON-encoded. Mirrors what
+// rowsToJSON does in json.go so the streaming output and the buffered
+// `-o jsonl` output produce the same bytes for the same input.
+func projectRow(r row, cols, excluded []string) map[string]any {
+	excludeSet := make(map[string]struct{}, len(excluded))
+	for _, c := range excluded {
+		excludeSet[c] = struct{}{}
+	}
+	out := make(map[string]any, len(cols))
+	for _, c := range cols {
+		if _, skip := excludeSet[c]; skip {
+			continue
+		}
+		out[c] = r[c]
 	}
 	return out
 }

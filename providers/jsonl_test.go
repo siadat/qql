@@ -2,6 +2,7 @@ package providers
 
 import (
 	"encoding/json"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -90,5 +91,71 @@ func TestLoadJSONLEmptyInput(t *testing.T) {
 	}
 	if firstKeys != nil {
 		t.Errorf("firstKeys: got %v, want nil", firstKeys)
+	}
+}
+
+func TestStreamJSONLCallsOnRowPerRow(t *testing.T) {
+	in := strings.NewReader(`
+{"name": "alice", "age": 30}
+{"name": "bob", "age": 25}
+{"name": "carol", "age": 41}
+`)
+	var names []string
+	var seenKeys [][]string
+	err := StreamJSONL(in, func(row map[string]any, firstKeys []string) error {
+		names = append(names, row["name"].(string))
+		seenKeys = append(seenKeys, firstKeys)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("StreamJSONL: %v", err)
+	}
+	if got, want := names, []string{"alice", "bob", "carol"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("names: got %v, want %v", got, want)
+	}
+	// firstKeys must be the same slice across every callback invocation.
+	wantKeys := []string{"name", "age"}
+	for i, ks := range seenKeys {
+		if !reflect.DeepEqual(ks, wantKeys) {
+			t.Errorf("seenKeys[%d]: got %v, want %v", i, ks, wantKeys)
+		}
+	}
+}
+
+func TestStreamJSONLOnRowErrorStopsScan(t *testing.T) {
+	in := strings.NewReader(`
+{"a": 1}
+{"a": 2}
+{"a": 3}
+`)
+	stop := errors.New("stop")
+	var seen int
+	err := StreamJSONL(in, func(row map[string]any, _ []string) error {
+		seen++
+		if seen == 2 {
+			return stop
+		}
+		return nil
+	})
+	if !errors.Is(err, stop) {
+		t.Fatalf("expected stop sentinel, got %v", err)
+	}
+	if seen != 2 {
+		t.Errorf("seen: got %d, want 2 (scan should stop on first error)", seen)
+	}
+}
+
+func TestStreamJSONLPreservesNumberType(t *testing.T) {
+	in := strings.NewReader(`{"n": 42}` + "\n")
+	var n any
+	if err := StreamJSONL(in, func(row map[string]any, _ []string) error {
+		n = row["n"]
+		return nil
+	}); err != nil {
+		t.Fatalf("StreamJSONL: %v", err)
+	}
+	num, ok := n.(json.Number)
+	if !ok || num.String() != "42" {
+		t.Errorf("n: got %T(%v), want json.Number(42)", n, n)
 	}
 }
