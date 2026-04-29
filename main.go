@@ -44,11 +44,43 @@ func main() {
 	}
 	paths = append(paths, args[1:]...)
 
+	stdinIdx := -1
+	for i, p := range paths {
+		if p == "-" {
+			if stdinIdx >= 0 {
+				fmt.Fprintln(os.Stderr, "stdin source `-` may only appear once")
+				os.Exit(2)
+			}
+			stdinIdx = i
+		}
+	}
+
 	var groups [][]row
-	if with.Provider != "" {
+	if stdinIdx >= 0 {
+		if with.Provider != "" {
+			fmt.Fprintln(os.Stderr, "stdin source `-` cannot be combined with WITH provider")
+			os.Exit(2)
+		}
+		if len(paths) > 1 {
+			fmt.Fprintln(os.Stderr, "stdin source `-` cannot be combined with other files")
+			os.Exit(2)
+		}
+		stdinRows, firstKeys, err := providers.LoadJSONL(os.Stdin)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		groups = [][]row{stdinRows}
+		// "First object determines the columns": when the user wrote SELECT *,
+		// fall back to the first row's keys in their JSONL order so the output
+		// matches what was piped in instead of the alphabetical union.
+		if selected == nil && len(firstKeys) > 0 {
+			selected = firstKeys
+		}
+	} else if with.Provider != "" {
 		// Provider-driven loads run once per query, not once per path. External
 		// providers receive every path via ctx.Files and decide how to
-		// interleave them; the git provider reads its repo path out of the
+		// interleave them. The git provider reads its repo path out of the
 		// provider value itself and ignores Source/Files entirely.
 		ctx := providers.Context{
 			Source:   sqlSource,

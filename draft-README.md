@@ -59,6 +59,8 @@ Keywords are case-insensitive. String literals use single or double quotes (no e
 
 A path to a YAML or JSON file. When absent, positional CLI arguments supply the sources. When present, the FROM source becomes the first positional path and CLI arguments are appended.
 
+The literal source `-` reads JSONL (one JSON object per line) from stdin, e.g. `kubectl get pods -o json | jq -c '.items[]' | qql "SELECT name WHERE phase = 'Running'" -`. The keys of the first JSON object set the default column projection (in their JSONL order), so `SELECT *` matches what you piped in instead of being re-sorted alphabetically. `-` cannot be combined with other paths or with `WITH provider`.
+
 ### WHERE
 
 - A boolean expression over column references and literals. Comparison operators are `=`, `!=`, `<`, `<=`, `>`, `>=`.
