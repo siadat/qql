@@ -91,9 +91,9 @@ func TestBuildRows(t *testing.T) {
 				- 3
 			`,
 			want: []map[string]any{
-				{"key": "0", "": 1},
-				{"key": "1", "": 2},
-				{"key": "2", "": 3},
+				{"key": "0", "value": 1},
+				{"key": "1", "value": 2},
+				{"key": "2", "value": 3},
 			},
 		},
 		{
@@ -130,12 +130,12 @@ func TestBuildRows(t *testing.T) {
 			},
 		},
 		{
-			name: "scalar value under root key uses empty path",
+			name: "scalar value under root key uses value column",
 			input: `
 				alice: "yes"
 			`,
 			want: []map[string]any{
-				{"key": "alice", "": "yes"},
+				{"key": "alice", "value": "yes"},
 			},
 		},
 		{
@@ -149,10 +149,10 @@ func TestBuildRows(t *testing.T) {
 			},
 		},
 		{
-			name:  "scalar root yields a single row with empty-key value",
+			name:  "scalar root yields a single row with value column",
 			input: `42`,
 			want: []map[string]any{
-				{"": 42},
+				{"value": 42},
 			},
 		},
 	}

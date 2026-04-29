@@ -13,9 +13,11 @@ type row = map[string]any
 // resolveCols picks the columns for output: selected verbatim if given,
 // otherwise the union of keys across rows. The `key` column (set by the
 // loader to the map key or list index of each top-level entry) is pulled to
-// the front so the row identifier reads first; the rest follow alphabetically.
-// Names in `excluded` are dropped from the result, supporting
-// `SELECT * EXCLUDE(col1, col2)`.
+// the front so the row identifier reads first, immediately followed by the
+// `value` column when present (it carries the scalar payload for shapes like
+// list-of-scalars or top-level scalar leaves, so it pairs visually with `key`).
+// The rest follow alphabetically. Names in `excluded` are dropped from the
+// result, supporting `SELECT * EXCLUDE(col1, col2)`.
 func resolveCols(rows []row, selected []string, excluded []string) []string {
 	var cols []string
 	if selected != nil {
@@ -28,20 +30,26 @@ func resolveCols(rows []row, selected []string, excluded []string) []string {
 			}
 		}
 		hasKey := false
+		hasValue := false
 		others := make([]string, 0, len(colSet))
 		for c := range colSet {
-			if c == "key" {
+			switch c {
+			case "key":
 				hasKey = true
-			} else {
+			case "value":
+				hasValue = true
+			default:
 				others = append(others, c)
 			}
 		}
 		sort.Strings(others)
 		if hasKey {
-			cols = append([]string{"key"}, others...)
-		} else {
-			cols = others
+			cols = append(cols, "key")
 		}
+		if hasValue {
+			cols = append(cols, "value")
+		}
+		cols = append(cols, others...)
 	}
 	if len(excluded) == 0 {
 		return cols

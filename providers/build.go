@@ -14,9 +14,9 @@ import (
 //     (as a string) in the `key` column and the element flattened into
 //     per-column entries.
 //
-// A scalar root degenerates to a single row whose only column is the empty
-// string. There is no path/glob configuration: anything more elaborate than
-// the two shapes above belongs in an external provider.
+// A scalar root degenerates to a single row whose only column is `value`.
+// There is no path/glob configuration: anything more elaborate than the two
+// shapes above belongs in an external provider.
 func rowsFromTree(tree any) ([]map[string]any, error) {
 	switch x := tree.(type) {
 	case map[string]any:
@@ -64,7 +64,11 @@ func flatten(v any, prefix string, out map[string]any) {
 			flatten(e, joinPath(prefix, strconv.Itoa(i)), out)
 		}
 	default:
-		out[prefix] = x
+		name := prefix
+		if name == "" {
+			name = "value"
+		}
+		out[name] = x
 	}
 }
 
