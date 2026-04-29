@@ -2,9 +2,9 @@
 
 [![test](https://github.com/siadat/qql/actions/workflows/test.yml/badge.svg)](https://github.com/siadat/qql/actions/workflows/test.yml)
 
-> Query structured YAML and JSON configs and data files
+> Query structured YAML and JSON input using SQL
 
-qql is a lightweight and extendable command-line data processor akin to `jq` for working with YAML using SQL.
+qql is a lightweight and extendable command-line data processor akin to `jq`, borrowing ideas from SQL.
 
 ## Install
 
