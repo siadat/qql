@@ -3,6 +3,7 @@ package providers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -142,6 +143,97 @@ func TestStreamJSONLOnRowErrorStopsScan(t *testing.T) {
 	}
 	if seen != 2 {
 		t.Errorf("seen: got %d, want 2 (scan should stop on first error)", seen)
+	}
+}
+
+func TestLoadStdinJSONL(t *testing.T) {
+	in := strings.NewReader(`
+{"name": "alice", "age": 30}
+{"name": "bob", "age": 25}
+`)
+	rows, firstKeys, err := LoadStdin(in)
+	if err != nil {
+		t.Fatalf("LoadStdin: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("rows: got %d, want 2", len(rows))
+	}
+	if !reflect.DeepEqual(firstKeys, []string{"name", "age"}) {
+		t.Errorf("firstKeys: got %v, want [name age]", firstKeys)
+	}
+}
+
+func TestLoadStdinSingleObject(t *testing.T) {
+	// A single multi-line JSON object is parsed as one document and
+	// dispatched through rowsFromTree, which produces one row per
+	// top-level key.
+	in := strings.NewReader(`{
+  "alice": {"age": 30},
+  "bob": {"age": 25}
+}`)
+	rows, firstKeys, err := LoadStdin(in)
+	if err != nil {
+		t.Fatalf("LoadStdin: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("rows: got %d, want 2", len(rows))
+	}
+	// firstKeys is nil for the single-doc path; resolveCols picks alpha order.
+	if firstKeys != nil {
+		t.Errorf("firstKeys: got %v, want nil for single-doc map root", firstKeys)
+	}
+}
+
+func TestLoadStdinArrayOfObjects(t *testing.T) {
+	// Top-level JSON array of objects is treated like JSONL: each element
+	// becomes a row directly, no synthetic `key` column.
+	in := strings.NewReader(`[
+  {"name": "alice", "age": 30},
+  {"name": "bob", "age": 25}
+]`)
+	rows, firstKeys, err := LoadStdin(in)
+	if err != nil {
+		t.Fatalf("LoadStdin: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("rows: got %d, want 2", len(rows))
+	}
+	if rows[0]["name"] != "alice" || rows[1]["name"] != "bob" {
+		t.Errorf("rows: %+v", rows)
+	}
+	if _, hasKey := rows[0]["key"]; hasKey {
+		t.Errorf("rows[0] should NOT have a synthetic `key` column for array-of-objects: %+v", rows[0])
+	}
+	if !reflect.DeepEqual(firstKeys, []string{"name", "age"}) {
+		t.Errorf("firstKeys: got %v, want [name age]", firstKeys)
+	}
+}
+
+func TestLoadStdinArrayOfScalars(t *testing.T) {
+	// A heterogeneous array (or one without object elements) falls through
+	// to rowsFromTree, which adds the `key` (index) column.
+	in := strings.NewReader(`[1, 2, 3]`)
+	rows, _, err := LoadStdin(in)
+	if err != nil {
+		t.Fatalf("LoadStdin: %v", err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("rows: got %d, want 3", len(rows))
+	}
+	for i, r := range rows {
+		if r["key"] != fmt.Sprintf("%d", i) {
+			t.Errorf("rows[%d].key: got %v, want %d", i, r["key"], i)
+		}
+	}
+}
+
+func TestLoadStdinEmpty(t *testing.T) {
+	rows, firstKeys, err := LoadStdin(strings.NewReader(""))
+	if err != nil {
+		t.Fatalf("LoadStdin: %v", err)
+	}
+	if rows != nil || firstKeys != nil {
+		t.Errorf("empty input should produce nil rows and nil firstKeys, got %+v / %v", rows, firstKeys)
 	}
 }
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -67,15 +68,24 @@ func main() {
 			fmt.Fprintln(os.Stderr, "stdin source `-` cannot be combined with other files")
 			os.Exit(2)
 		}
-		// Streaming path: when the user asks for JSONL output and there's no
-		// global aggregation step (ORDER BY, COUNT) blocking us, emit each
-		// matching row as it arrives. JSONL is naturally streamable so we
-		// avoid the "what column widths?" problem of streaming tables.
-		if outFlag == "jsonl" && len(orderBy) == 0 && !isCount {
-			streamStdinJSONL(selected, excluded, pred, limit, offset)
+		// Wrap stdin so we can peek the first byte to choose between the
+		// streaming path (JSONL only) and the buffered path (auto-detect
+		// JSONL vs single JSON document).
+		stdinReader := bufio.NewReader(os.Stdin)
+		firstByte, err := peekFirstNonWS(stdinReader)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		// Streaming path: JSONL output, no aggregation that needs the full
+		// result, and an input that *could* be JSONL. A leading `[` (or
+		// scalar/EOF) means a single JSON document, which is fundamentally
+		// not stream-friendly — fall through to the buffered path.
+		if outFlag == "jsonl" && len(orderBy) == 0 && !isCount && firstByte == '{' {
+			streamStdinJSONL(stdinReader, selected, excluded, pred, limit, offset)
 			return
 		}
-		stdinRows, firstKeys, err := providers.LoadJSONL(os.Stdin)
+		stdinRows, firstKeys, err := providers.LoadStdin(stdinReader)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -360,12 +370,12 @@ var errStreamLimitReached = errors.New("stream limit reached")
 // the user wrote SELECT *) and become the validation set for column
 // references — we never see a "later row" here, so the first row IS the
 // schema.
-func streamStdinJSONL(selected, excluded []string, pred parser.WhereExpr, limit, offset int) {
+func streamStdinJSONL(in io.Reader, selected, excluded []string, pred parser.WhereExpr, limit, offset int) {
 	enc := json.NewEncoder(os.Stdout)
 	var skipped, emitted int
 	var validated bool
 	cols := selected
-	err := providers.StreamJSONL(os.Stdin, func(r row, firstKeys []string) error {
+	err := providers.StreamJSONL(in, func(r row, firstKeys []string) error {
 		if !validated {
 			if err := validateAgainstKeys(firstKeys, selected, excluded, pred); err != nil {
 				return err
@@ -459,6 +469,31 @@ func projectRow(r row, cols, excluded []string) map[string]any {
 		out[c] = r[c]
 	}
 	return out
+}
+
+// peekFirstNonWS consumes any leading JSON whitespace and returns the next
+// byte without consuming it. Returns 0 on EOF (so callers can treat empty
+// input as "fall through to the buffered path"). The whitespace it consumes
+// is not part of any JSON value, so leaving it stripped is harmless for
+// downstream parsers.
+func peekFirstNonWS(r *bufio.Reader) (byte, error) {
+	for {
+		b, err := r.Peek(1)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return 0, nil
+			}
+			return 0, err
+		}
+		c := b[0]
+		if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
+			if _, err := r.ReadByte(); err != nil {
+				return 0, err
+			}
+			continue
+		}
+		return c, nil
+	}
 }
 
 func toProviderOrderBy(in []parser.OrderTerm) []providers.OrderTerm {
