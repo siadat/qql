@@ -17,7 +17,7 @@ import (
 
 func main() {
 	var outFlag string
-	flag.StringVar(&outFlag, "out", "table", "output format: table, json, jsonl")
+	flag.StringVar(&outFlag, "out", "table", "output format: table, json, jsonl, shell")
 	flag.StringVar(&outFlag, "o", "table", "output format (shorthand for --out)")
 	noHeader := flag.Bool("no-header", false, "hide the header row, separator, and trailing row count in table output")
 	summary := flag.Bool("summary", false, "shrink the table by hoisting columns whose value is identical across every row into a small summary table printed below, so the main table is narrower and fits more terminals")
@@ -296,8 +296,10 @@ func main() {
 		printJSON(out, flattenGroups(groups), selected, excluded)
 	case "jsonl":
 		printJSONL(out, flattenGroups(groups), selected, excluded)
+	case "shell":
+		printShell(out, flattenGroups(groups), selected, excluded)
 	default:
-		fmt.Fprintf(os.Stderr, "unknown output format %q (want table, json, or jsonl)\n", outFlag)
+		fmt.Fprintf(os.Stderr, "unknown output format %q (want table, json, jsonl, or shell)\n", outFlag)
 		os.Exit(2)
 	}
 
