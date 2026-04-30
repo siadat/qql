@@ -39,6 +39,8 @@ db1   32   128
 
 ## Query syntax
 
+The query argument itself is optional: omit it entirely and qql runs `SELECT *`. So `cat servers.json | qql` prints every row, and `qql 'WHERE cpu > 8' servers.json` is enough when you only need a filter.
+
 A query is a sequence of clauses written in this fixed order. Every clause is optional:
 
 - `SELECT <projection>`

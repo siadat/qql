@@ -30,14 +30,20 @@ func main() {
 	flag.Parse()
 
 	args := flag.Args()
-	// First positional is always the query (empty when omitted, which the
-	// parser turns into `SELECT *`). Remaining positionals are data
-	// sources. Lets `cmd | qql` work with no args at all.
+	// First positional is the query; remaining positionals are data sources.
+	// An *omitted* query defaults to `SELECT *` so `cmd | qql` works. An
+	// *explicitly empty* query (`qql ''`) is rejected — that is almost
+	// always a typo, and silently turning it into `SELECT *` would mask the
+	// mistake.
 	queryStr := ""
 	var posArgs []string
 	if len(args) > 0 {
 		queryStr = args[0]
 		posArgs = args[1:]
+		if strings.TrimSpace(queryStr) == "" {
+			fmt.Fprintln(os.Stderr, "empty query: omit the argument entirely if you want the default `SELECT *`")
+			os.Exit(2)
+		}
 	}
 
 	stmt, err := parser.Parse(queryStr)
