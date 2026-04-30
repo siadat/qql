@@ -56,6 +56,24 @@ func main() {
 	}
 	paths = append(paths, args[1:]...)
 
+	// Auto-inject `-` whenever stdin is piped so `cmd | qql 'SELECT *'`
+	// works without an explicit `-`. Skipped when the user already typed
+	// `-` (the duplicate check below would otherwise fire). When stdin is
+	// a TTY we leave paths alone so an interactive `qql 'SELECT *'` still
+	// hits the usage path instead of hanging on a blank read.
+	if !isTerminal(os.Stdin) {
+		hasStdin := false
+		for _, p := range paths {
+			if p == "-" {
+				hasStdin = true
+				break
+			}
+		}
+		if !hasStdin {
+			paths = append(paths, "-")
+		}
+	}
+
 	stdinIdx := -1
 	for i, p := range paths {
 		if p == "-" {
