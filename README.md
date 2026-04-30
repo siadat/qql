@@ -14,9 +14,8 @@ go install github.com/siadat/qql@latest
 
 ## Example
 
-Given `testdata/servers.yaml` (included in the repo):
-
 ```yaml
+$ cat testdata/servers.yaml
 web1: {cpu: 8, ram: 32, status: up, role: web}
 web2: {cpu: 8, ram: 32, status: down, role: web}
 web3: {cpu: 16, ram: 64, status: up, role: web}
@@ -24,18 +23,25 @@ db1: {cpu: 32, ram: 128, status: up, role: db}
 cache1: {cpu: 4, ram: 16, status: up, role: cache}
 ```
 
-Run:
-
 ```
 $ qql "SELECT key, cpu, ram WHERE cpu >= 16" testdata/servers.yaml
-```
-Output:
-```
 key   cpu  ram
 ----  ---  ---
 web3  16   64
 db1   32   128
 2 rows
+```
+
+```
+$ qql -o shell "SELECT key, cpu, ram WHERE cpu >= 16" testdata/servers.yaml
+key="web3" cpu="16" ram="64"
+key="db1" cpu="32" ram="128"
+```
+
+```
+$ qql -o jsonl "SELECT key, cpu, ram WHERE cpu >= 16" testdata/servers.yaml
+{"cpu":16,"key":"web3","ram":64}
+{"cpu":32,"key":"db1","ram":128}
 ```
 
 ## Query syntax
