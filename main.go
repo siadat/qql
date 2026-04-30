@@ -30,19 +30,24 @@ func main() {
 	flag.Parse()
 
 	args := flag.Args()
-	if len(args) == 0 {
-		flag.Usage()
-		os.Exit(2)
+	// First positional is always the query (empty when omitted, which the
+	// parser turns into `SELECT *`). Remaining positionals are data
+	// sources. Lets `cmd | qql` work with no args at all.
+	queryStr := ""
+	var posArgs []string
+	if len(args) > 0 {
+		queryStr = args[0]
+		posArgs = args[1:]
 	}
 
-	stmt, err := parser.Parse(args[0])
+	stmt, err := parser.Parse(queryStr)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
 
 	if u, ok := stmt.(*parser.UpdateStmt); ok {
-		runUpdate(u, args[1:])
+		runUpdate(u, posArgs)
 		return
 	}
 
@@ -54,7 +59,7 @@ func main() {
 	if sqlSource != "" {
 		paths = append(paths, sqlSource)
 	}
-	paths = append(paths, args[1:]...)
+	paths = append(paths, posArgs...)
 
 	// Auto-inject `-` whenever stdin is piped so `cmd | qql 'SELECT *'`
 	// works without an explicit `-`. Skipped when the user already typed
