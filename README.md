@@ -27,7 +27,7 @@ cache1: {cpu: 4, ram: 16, status: up, role: cache}
 Run:
 
 ```
-$ qql "SELECT key, cpu, ram WHERE status = 'up' AND cpu >= 16" testdata/servers.yaml
+$ qql "SELECT key, cpu, ram WHERE cpu >= 16" testdata/servers.yaml
 ```
 Output:
 ```
@@ -35,11 +35,10 @@ key   cpu  ram
 ----  ---  ---
 web3  16   64
 db1   32   128
+2 rows
 ```
 
 ## Query syntax
-
-The query argument itself is optional: omit it entirely and qql runs `SELECT *`. So `cat servers.json | qql` prints every row, and `qql 'WHERE cpu > 8' servers.json` is enough when you only need a filter.
 
 A query is a sequence of clauses written in this fixed order. Every clause is optional:
 
@@ -51,7 +50,11 @@ A query is a sequence of clauses written in this fixed order. Every clause is op
 - `OFFSET <M>`
 - `WITH <key> = '<value>' [, ...]`
 
-Keywords are case-insensitive. String literals use single or double quotes (no escapes: bytes are taken verbatim, which keeps regex and path-glob values readable). Numbers may be integer or floating-point. The keywords `true`, `false`, and `null` carry their usual meaning.
+- Keywords are case-insensitive.
+- String literals use single or double quotes (no escapes: bytes are taken verbatim, which keeps regex and path-glob values readable).
+- Numbers may be integer or floating-point.
+- The keywords `true`, `false`, and `null` carry their usual meaning.
+- The query argument itself is optional. So this is valid: `cat servers.json | qql`.
 
 ### SELECT
 
